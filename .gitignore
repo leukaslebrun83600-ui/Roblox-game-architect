@@ -1,0 +1,24 @@
+.DS_Store
+_output/*.md
+
+# Rojo build output
+default.project.json
+*.rbxl
+*.rbxlx
+*.rbxm
+*.rbxmx
+
+# IDE
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+Thumbs.db
+
+# Local Rojo build
+.rojo
+
+# Node modules (if using TypeScript)
+node_modules/

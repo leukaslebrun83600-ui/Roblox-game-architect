@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "WebFetch(domain:skills.sh)",
+      "Bash(npx skills:*)",
+      "Bash(curl:*)",
+      "Bash(echo:*)",
+      "Bash(rojo plugin:*)",
+      "Bash(kill %2:*)",
+      "Bash(pkill:*)"
+    ]
+  }
+}
