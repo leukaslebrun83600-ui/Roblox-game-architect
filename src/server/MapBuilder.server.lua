@@ -26,18 +26,27 @@ local COURSE_START_Z  = 200   -- Z du point de départ du parcours
 local BASE_Y          = 10    -- hauteur du sol de base
 local LOBBY_OFFSET_X  = 10000 -- déplace le lobby 10 000 studs sur X → invisible depuis le parcours
 
--- Définition exacte des 8 sections (source : PRD 03)
+-- Définition des 9 sections (source : PRD 03)
 local SECTIONS = {
     {
         name   = "Section_01_Caramel",
         color  = Color3.fromRGB(255, 213,  79),  -- caramel doré
         traps  = { "FloorCollapse" },
         sac    = false,
-        yBias  = 0,   -- décalage Y par rapport au sol de base
+        yBias  = 0,
         note   = "Intro tutoriel — sauts larges, difficulté facile",
     },
     {
-        name   = "Section_02_Cascade",
+        name   = "Section_02_Disques",
+        color  = Color3.fromRGB(80, 210, 220),   -- turquoise bonbon
+        traps  = {},
+        sac    = false,
+        yBias  = 0,
+        hasDisc = true,
+        note   = "Plateforme tournante — saute et ride !",
+    },
+    {
+        name   = "Section_03_Cascade",
         color  = Color3.fromRGB(255, 140,  80),  -- orange bonbon
         traps  = { "Projectile" },
         sac    = true,
@@ -45,7 +54,7 @@ local SECTIONS = {
         note   = "Première introduction au bouton Sacrifice",
     },
     {
-        name   = "Section_03_Cylindres",
+        name   = "Section_04_Cylindres",
         color  = Color3.fromRGB(240, 240, 255),  -- guimauve blanche
         traps  = {},
         sac    = false,
@@ -54,7 +63,7 @@ local SECTIONS = {
         note   = "Cylindres tournants — cours ou tombe !",
     },
     {
-        name   = "Section_04_Sucette",
+        name   = "Section_05_Sucette",
         color  = Color3.fromRGB(255, 100, 200),  -- rose vif
         traps  = { "FloorCollapse" },
         sac    = true,
@@ -62,7 +71,7 @@ local SECTIONS = {
         note   = "Première section verticale — montée en spirale",
     },
     {
-        name   = "Section_05_Pendules",
+        name   = "Section_06_Pendules",
         color  = Color3.fromRGB(80, 200, 120),   -- vert bonbon
         traps  = {},
         sac    = false,
@@ -71,7 +80,7 @@ local SECTIONS = {
         note   = "Pendules oscillants — passe entre les boules !",
     },
     {
-        name   = "Section_06_Chocolat",
+        name   = "Section_07_Chocolat",
         color  = Color3.fromRGB(139, 80, 30),    -- chocolat brun
         traps  = { "WallPusher", "FloorCollapse" },
         sac    = true,
@@ -79,16 +88,16 @@ local SECTIONS = {
         note   = "Pente raide — joueurs regroupés, parfait pour les pièges",
     },
     {
-        name   = "Section_07_Cylindres2",
-        color  = Color3.fromRGB(255, 182, 255),  -- barbe à papa rose
+        name   = "Section_08_Spinners",
+        color  = Color3.fromRGB(197, 193, 227),  -- lavande
         traps  = {},
         sac    = false,
         yBias  = 0,
-        hasCylinders  = true,
-        note   = "Cylindres difficiles — avant la ligne d'arrivée",
+        hasSpinners = true,
+        note   = "Disques rotatifs — saute par-dessus les bras !",
     },
     {
-        name   = "Section_08_Chateau",
+        name   = "Section_09_Chateau",
         color  = Color3.fromRGB(255, 215,   0),  -- château doré
         traps  = {},
         sac    = false,
@@ -153,6 +162,73 @@ local function buildSection(courseFolder, sectionDef, index, startY)
 
     -- ── Largeur des plateformes ──────────────────────────────
     local platW = sectionDef.narrow and 8 or 20
+
+    -- ── Section plateforme tournante (disc) ──────────────────
+    -- Layout : Plat_A →[8]→ ArmTip ←Bras tournant→ ArmTip →[6]→ Plat_E → Links
+    -- Le bras est tagué "SpinningDisc" → animé par DiscManager.server.lua
+    if sectionDef.hasDisc then
+        local ARM_LEN = 20    -- demi-longueur du bras (studs depuis le centre)
+        local ARM_W   = 8     -- largeur du bras (perpendiculaire à la rotation)
+        local ARM_H   = 1.2   -- épaisseur = même que les plateformes normales
+
+        -- Plateforme d'approche
+        -- Bord avant à dz=15 → gap=8 studs jusqu'au tip approche (dz=23) ✓
+        part(platFolder, "Plat_A",
+            Vector3.new(platW, 1.2, 14),
+            CFrame.new(0, yBase, zStart + 8), sectionDef.color)
+
+        -- Centre du bras à dz=43
+        -- Tip approche : dz=23 → gap=8 depuis Plat_A ✓
+        -- Tip sortie   : dz=63 → gap=6 vers Plat_E  ✓
+        local armCenterZ = zStart + 43
+        local armCenterY = yBase  -- surface bras = yBase+0.6 = surface des plateformes
+
+        -- Moyeu visuel (décoratif, ne bloque pas les joueurs)
+        local hub = part(platFolder, "Hub",
+            Vector3.new(3, 5, 3),
+            CFrame.new(0, armCenterY - 2, armCenterZ),
+            Color3.fromRGB(60, 60, 60))
+        hub.CanCollide = false
+
+        -- Bras tournant (tagué "SpinningDisc")
+        -- Size (ARM_W, ARM_H, ARM_LEN*2) : s'étend en ±Z quand angle=0
+        local arm = part(platFolder, "Arm",
+            Vector3.new(ARM_W, ARM_H, ARM_LEN * 2),
+            CFrame.new(0, armCenterY, armCenterZ),
+            Color3.fromRGB(255, 90, 180))  -- rose vif
+        arm:SetAttribute("PosX",    0)
+        arm:SetAttribute("PosY",    armCenterY)
+        arm:SetAttribute("PosZ",    armCenterZ)
+        arm:SetAttribute("Speed",   math.rad(35))
+        arm:SetAttribute("SpinDir", 1)
+        CollectionService:AddTag(arm, "SpinningDisc")
+
+        -- Plateforme de sortie (bord gauche dz=69 → gap=6 depuis tip sortie dz=63)
+        part(platFolder, "Plat_E",
+            Vector3.new(platW, 1.2, 14),
+            CFrame.new(0, yBase, zStart + 76), sectionDef.color)
+
+        -- Liaisons vers la section suivante
+        part(platFolder, "Plat_Link1",
+            Vector3.new(platW - 4, 1.2, 14),
+            CFrame.new(0, yBase, zStart + 95), sectionDef.color)
+        part(platFolder, "Plat_Link2",
+            Vector3.new(platW - 4, 1.2, 14),
+            CFrame.new(0, yBase, zStart + 112), sectionDef.color)
+
+        -- Checkpoint
+        local cpName = string.format("Checkpoint_%02d", index)
+        local cp = part(cpFolder, cpName,
+            Vector3.new(platW + 4, 8, 10),
+            CFrame.new(0, yBase + 4, zStart + 90),
+            Color3.fromRGB(0, 210, 100), Enum.Material.Neon, 0.6)
+        cp.CanCollide = false
+        cp:SetAttribute("SectionIdx", index)
+        cp:SetAttribute("CheckpointLabel", cpName)
+        tag(cp, "Checkpoint")
+
+        return yBase  -- section plate
+    end
 
     -- ── Section cylindres tournants ──────────────────────────
     -- Layout (joueur avance +Z) :
@@ -299,6 +375,131 @@ local function buildSection(courseFolder, sectionDef, index, startY)
         local cpName = string.format("Checkpoint_%02d", index)
         local cp = part(cpFolder, cpName,
             Vector3.new(pendW + 4, 8, 10),
+            CFrame.new(0, yBase + 4, zStart + 90),
+            Color3.fromRGB(0, 210, 100), Enum.Material.Neon, 0.6)
+        cp.CanCollide = false
+        cp:SetAttribute("SectionIdx", index)
+        cp:SetAttribute("CheckpointLabel", cpName)
+        tag(cp, "Checkpoint")
+
+        return yBase  -- section plate
+    end
+
+    -- ── Section disques rotatifs (spinners) ──────────────────
+    -- Layout : [Plat_A] → [2 rangées × 3 disques] → [Plat_E] → Checkpoint → Links
+    -- SpinnerHub taguées "SpinnerHub" → animées par SpinnerManager.server.lua
+    -- Bras taguées "SpinnerArm"       → kill on touch géré par SpinnerManager
+    if sectionDef.hasSpinners then
+        local DISC_R  = 10
+        local DISC_T  = 2
+        local STEP    = DISC_R * 2 + 2    -- 22 (c-to-c, gap=2 studs)
+        local HUB_R   = 1
+        local HUB_H   = 2
+        local NUM_ARMS = 3
+        local ARM_LEN = 8
+        local ARM_H   = 2
+        local ARM_W   = 1.2
+        local spinW   = STEP * 2 + DISC_R * 2 + 2  -- 66 (couvre les 3 disques + marge)
+
+        local DISC_SURF_Y = yBase + DISC_T / 2        -- yBase + 1
+        local ARM_Y       = DISC_SURF_Y + ARM_H / 2   -- yBase + 2
+        local armColor    = Color3.fromRGB(255, 90, 180)  -- rose vif
+
+        -- Plateforme d'approche
+        -- bord droit à zStart+15, gap de 3 studs avec la rangée 1 (zStart+18)
+        part(platFolder, "Plat_A",
+            Vector3.new(spinW, 1.2, 14),
+            CFrame.new(0, yBase, zStart + 8), sectionDef.color)
+
+        -- 2 rangées de 3 disques (gauche / centre / droite)
+        -- Rangée 1 : dz=28  |  Rangée 2 : dz=50  (gap entre rangées = 2 studs)
+        local rowDefs = {
+            { dz = 28, dirs = { 1, -1,  1} },
+            { dz = 50, dirs = {-1,  1, -1} },
+        }
+
+        for _, row in ipairs(rowDefs) do
+            for i, dx in ipairs({-STEP, 0, STEP}) do
+                local discX   = dx
+                local discZ   = zStart + row.dz
+                local spinDir = row.dirs[i]
+
+                -- Disque (cylindre horizontal)
+                local disc = part(platFolder, "Disc",
+                    Vector3.new(DISC_T, DISC_R * 2, DISC_R * 2),
+                    CFrame.new(discX, yBase, discZ) * CFrame.Angles(0, 0, math.pi / 2),
+                    sectionDef.color)
+                disc.Shape = Enum.PartType.Cylinder
+
+                -- Moyeu visuel (même couleur lavande que le disque)
+                local hubV = part(platFolder, "HubVisual",
+                    Vector3.new(HUB_H, HUB_R * 2, HUB_R * 2),
+                    CFrame.new(discX, DISC_SURF_Y + HUB_H / 2, discZ) * CFrame.Angles(0, 0, math.pi / 2),
+                    sectionDef.color)
+                hubV.Shape    = Enum.PartType.Cylinder
+                hubV.CanCollide = false
+
+                -- Moyeu tournant invisible (animé par SpinnerManager)
+                local spinHub = part(platFolder, "SpinHub",
+                    Vector3.new(0.1, 0.1, 0.1),
+                    CFrame.new(discX, ARM_Y, discZ),
+                    Color3.new(0, 0, 0))
+                spinHub.Transparency = 1
+                spinHub.CanCollide   = false
+                spinHub:SetAttribute("SpinDir", spinDir)
+                spinHub:SetAttribute("Speed",   math.rad(100))
+                spinHub:SetAttribute("PosX",    discX)
+                spinHub:SetAttribute("PosY",    ARM_Y)
+                spinHub:SetAttribute("PosZ",    discZ)
+                CollectionService:AddTag(spinHub, "SpinnerHub")
+
+                -- Bras (non-anchored, suivent via WeldConstraint)
+                for j = 1, NUM_ARMS do
+                    local ai    = (j - 1) * (2 * math.pi / NUM_ARMS)
+                    local cos_a = math.cos(ai)
+                    local sin_a = math.sin(ai)
+                    local armCX = discX + cos_a * (HUB_R + ARM_LEN / 2)
+                    local armCZ = discZ + sin_a * (HUB_R + ARM_LEN / 2)
+
+                    local arm = part(platFolder, "Arm_" .. j,
+                        Vector3.new(ARM_LEN, ARM_H, ARM_W),
+                        CFrame.fromMatrix(
+                            Vector3.new(armCX, ARM_Y, armCZ),
+                            Vector3.new(cos_a, 0, sin_a),
+                            Vector3.new(0, 1, 0)
+                        ),
+                        armColor)
+                    arm.Anchored = false
+
+                    local weld  = Instance.new("WeldConstraint")
+                    weld.Part0  = spinHub
+                    weld.Part1  = arm
+                    weld.Parent = arm
+                    CollectionService:AddTag(arm, "SpinnerArm")
+                end
+            end
+        end
+
+        -- 3 plateformes de sortie identiques à Plat_A (spinW × 1.2 × 14, couleur lavande)
+        -- Gaps de 6 studs entre chaque → facilement franchissables
+        -- dz=72 : bord gauche=65 → gap=5 avec rangée 2 (bord droit à dz=60)
+        part(platFolder, "Plat_E",
+            Vector3.new(spinW, 1.2, 14),
+            CFrame.new(0, yBase, zStart + 72), sectionDef.color)
+        -- dz=92 : bord gauche=85 → gap=6 avec Plat_E (bord droit=79)
+        part(platFolder, "Plat_Link1",
+            Vector3.new(spinW, 1.2, 14),
+            CFrame.new(0, yBase, zStart + 92), sectionDef.color)
+        -- dz=112 : bord gauche=105 → gap=6 avec Plat_Link1 (bord droit=99)
+        --          bord droit=119 → gap=3 avec Plat_A Section 8 (bord gauche=122)
+        part(platFolder, "Plat_Link2",
+            Vector3.new(spinW, 1.2, 14),
+            CFrame.new(0, yBase, zStart + 112), sectionDef.color)
+
+        -- Checkpoint au milieu de la sortie
+        local cpName = string.format("Checkpoint_%02d", index)
+        local cp = part(cpFolder, cpName,
+            Vector3.new(spinW + 4, 8, 10),
             CFrame.new(0, yBase + 4, zStart + 90),
             Color3.fromRGB(0, 210, 100), Enum.Material.Neon, 0.6)
         cp.CanCollide = false
@@ -619,8 +820,8 @@ local courseFolder = folder(Workspace, "Course")
 local currentY = BASE_Y   -- hauteur chaînée entre sections
 for i, sectionDef in ipairs(SECTIONS) do
     currentY = buildSection(courseFolder, sectionDef, i, currentY)
-    print(string.format("[MapBuilder] ✅ %d/8 — %s  (fin Y=%.1f)  %s",
-        i, sectionDef.name, currentY, sectionDef.note))
+    print(string.format("[MapBuilder] ✅ %d/%d — %s  (fin Y=%.1f)  %s",
+        i, #SECTIONS, sectionDef.name, currentY, sectionDef.note))
 end
 
 -- Résumé des tags créés

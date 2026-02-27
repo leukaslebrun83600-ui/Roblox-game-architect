@@ -20,7 +20,9 @@
         "$properties": { "Disabled": true }
       },
       "RotatingCylinders":  { "$path": "src/server/RotatingCylinders.server.lua" },
-      "PendulumManager":   { "$path": "src/server/PendulumManager.server.lua" }
+      "PendulumManager":    { "$path": "src/server/PendulumManager.server.lua" },
+      "SpinnerManager":     { "$path": "src/server/SpinnerManager.server.lua" },
+      "DiscManager":        { "$path": "src/server/DiscManager.server.lua" }
     },
 
     "ServerStorage": {
