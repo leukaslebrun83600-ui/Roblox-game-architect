@@ -22,8 +22,9 @@ local Workspace         = game.Workspace
 -- Chaque section fait SECTION_LENGTH studs le long de l'axe Z.
 -- Le lobby est autour de Z=0, le parcours commence à Z=COURSE_START_Z.
 local SECTION_LENGTH  = 120   -- (studs) longueur d'une section
-local COURSE_START_Z  = 200   -- Z du point de départ du parcours (loin du lobby)
+local COURSE_START_Z  = 200   -- Z du point de départ du parcours
 local BASE_Y          = 10    -- hauteur du sol de base
+local LOBBY_OFFSET_X  = 10000 -- déplace le lobby 10 000 studs sur X → invisible depuis le parcours
 
 -- Définition exacte des 8 sections (source : PRD 03)
 local SECTIONS = {
@@ -44,13 +45,13 @@ local SECTIONS = {
         note   = "Première introduction au bouton Sacrifice",
     },
     {
-        name   = "Section_03_Guimauve",
+        name   = "Section_03_Cylindres",
         color  = Color3.fromRGB(240, 240, 255),  -- guimauve blanche
-        traps  = { "WallPusher", "WallPusher" },
+        traps  = {},
         sac    = false,
-        yBias  = -8,
-        narrow = true,  -- pont étroit (largeur réduite)
-        note   = "Pont étroit — murs pousseurs des deux côtés",
+        yBias  = 0,
+        hasCylinders = true,
+        note   = "Cylindres tournants — cours ou tombe !",
     },
     {
         name   = "Section_04_Sucette",
@@ -61,12 +62,13 @@ local SECTIONS = {
         note   = "Première section verticale — montée en spirale",
     },
     {
-        name   = "Section_05_Berlingots",
+        name   = "Section_05_Pendules",
         color  = Color3.fromRGB(80, 200, 120),   -- vert bonbon
-        traps  = { "FloorCollapse", "Projectile" },
-        sac    = true,
-        yBias  = 20,
-        note   = "Obstacles visuels denses — sauts plus précis",
+        traps  = {},
+        sac    = false,
+        yBias  = 0,
+        hasPendulums = true,
+        note   = "Pendules oscillants — passe entre les boules !",
     },
     {
         name   = "Section_06_Chocolat",
@@ -77,12 +79,13 @@ local SECTIONS = {
         note   = "Pente raide — joueurs regroupés, parfait pour les pièges",
     },
     {
-        name   = "Section_07_Barbe",
+        name   = "Section_07_Cylindres2",
         color  = Color3.fromRGB(255, 182, 255),  -- barbe à papa rose
-        traps  = { "Projectile", "FloorCollapse" },
-        sac    = true,
-        yBias  = 50,  -- très haute — plateformes flottantes
-        note   = "Section la plus difficile — hauteur maximale",
+        traps  = {},
+        sac    = false,
+        yBias  = 0,
+        hasCylinders  = true,
+        note   = "Cylindres difficiles — avant la ligne d'arrivée",
     },
     {
         name   = "Section_08_Chateau",
@@ -150,6 +153,161 @@ local function buildSection(courseFolder, sectionDef, index, startY)
 
     -- ── Largeur des plateformes ──────────────────────────────
     local platW = sectionDef.narrow and 8 or 20
+
+    -- ── Section cylindres tournants ──────────────────────────
+    -- Layout (joueur avance +Z) :
+    --   Plat_A →[7]→ Cyl1 →[5]→ Plat_B →[6]→ Cyl2 →[5]→ Plat_Sortie → Checkpoint → Links
+    if sectionDef.hasCylinders then
+        local CYL_R    = 5
+        local CYL_LEN  = 24
+        local cylColor = Color3.fromRGB(139, 80, 30)   -- brun chocolat
+        -- Centre Y des cylindres : surface = yBase + 0.6 (niveau du dessus des plateformes)
+        local cylY     = yBase - (CYL_R - 0.6)
+
+        -- Plateforme d'approche
+        part(platFolder, "Plat_A",
+            Vector3.new(platW, 1.2, 18),
+            CFrame.new(0, yBase, zStart + 12), sectionDef.color)
+
+        -- Cylindre 1 (tagué pour RotatingCylinders.server.lua)
+        local cyl1 = part(platFolder, "Cyl_1",
+            Vector3.new(CYL_LEN, CYL_R * 2, CYL_R * 2),
+            CFrame.new(0, cylY, zStart + 33), cylColor)
+        cyl1.Shape = Enum.PartType.Cylinder
+        CollectionService:AddTag(cyl1, "RotatingCylinder")
+
+        -- Plateforme intermédiaire
+        part(platFolder, "Plat_B",
+            Vector3.new(platW, 1.2, 4),
+            CFrame.new(0, yBase, zStart + 45), sectionDef.color)
+
+        -- Cylindre 2
+        local cyl2 = part(platFolder, "Cyl_2",
+            Vector3.new(CYL_LEN, CYL_R * 2, CYL_R * 2),
+            CFrame.new(0, cylY, zStart + 58), cylColor)
+        cyl2.Shape = Enum.PartType.Cylinder
+        CollectionService:AddTag(cyl2, "RotatingCylinder")
+
+        -- Plateforme de sortie
+        part(platFolder, "Plat_E",
+            Vector3.new(platW, 1.2, 16),
+            CFrame.new(0, yBase, zStart + 76), sectionDef.color)
+
+        -- Plateformes de liaison (mêmes dz que les sections normales)
+        part(platFolder, "Plat_Link1",
+            Vector3.new(platW - 4, 1.2, 14),
+            CFrame.new(0, yBase, zStart + 95), sectionDef.color)
+        part(platFolder, "Plat_Link2",
+            Vector3.new(platW - 4, 1.2, 14),
+            CFrame.new(0, yBase, zStart + 112), sectionDef.color)
+
+        -- Checkpoint (même dz=90 que les autres sections)
+        local cpName = string.format("Checkpoint_%02d", index)
+        local cp = part(cpFolder, cpName,
+            Vector3.new(platW + 4, 8, 10),
+            CFrame.new(0, yBase + 4, zStart + 90),
+            Color3.fromRGB(0, 210, 100), Enum.Material.Neon, 0.6)
+        cp.CanCollide = false
+        cp:SetAttribute("SectionIdx", index)
+        cp:SetAttribute("CheckpointLabel", cpName)
+        tag(cp, "Checkpoint")
+
+        return yBase  -- section plate (pas de variation verticale)
+    end
+
+    -- ── Section pendules oscillants ──────────────────────────
+    -- Layout : Plat_A →[gap]→ Plat_B (grande, 3 pendules au-dessus) →[cont.]→ Plat_E → Checkpoint → Links
+    -- Les boules sont taguées "PendulumBall" → animées par PendulumManager.server.lua
+    if sectionDef.hasPendulums then
+        local PEND_PIVOT_H = 15    -- hauteur du pivot au-dessus de la surface
+        local PEND_ROPE    = 12    -- longueur de la corde
+        local PEND_BALL_R  = 2     -- rayon de la boule
+        local BASE_SPD     = 0.55  -- cycles/seconde
+        local pendW        = 20    -- légèrement réduite → amplitude plus faible → boules moins hautes
+
+        -- surface Y = yBase + 0.6, pivot au-dessus
+        local pivotY = yBase + 0.6 + PEND_PIVOT_H  -- yBase + 15.6
+
+        -- Plateforme d'approche
+        part(platFolder, "Plat_A",
+            Vector3.new(pendW, 1.2, 14),
+            CFrame.new(0, yBase, zStart + 8), sectionDef.color)
+
+        -- Grande plateforme principale (couvre toute la zone des 3 pendules)
+        -- dz=21 à dz=79 (58 studs)
+        part(platFolder, "Plat_B",
+            Vector3.new(pendW, 1.2, 58),
+            CFrame.new(0, yBase, zStart + 50), sectionDef.color)
+
+        -- Plateforme de sortie
+        part(platFolder, "Plat_E",
+            Vector3.new(pendW, 1.2, 12),
+            CFrame.new(0, yBase, zStart + 84), sectionDef.color)
+
+        -- 3 pendules espacés de 18 studs, phases décalées → jamais tous du même côté
+        local pendConfigs = {
+            { dz = 32, phase = 0,           speed = BASE_SPD,       color = Color3.fromRGB(220, 50,  50)  },
+            { dz = 50, phase = math.pi,     speed = BASE_SPD,       color = Color3.fromRGB(50,  200, 200) },
+            { dz = 68, phase = math.pi / 2, speed = BASE_SPD * 0.9, color = Color3.fromRGB(80,  200, 80)  },
+        }
+
+        for i, cfg in ipairs(pendConfigs) do
+            local px = 0
+            local py = pivotY
+            local pz = zStart + cfg.dz
+
+            -- Traverse horizontale (support visuel)
+            part(platFolder, "Traverse_" .. i,
+                Vector3.new(pendW, 0.8, 0.8),
+                CFrame.new(px, py, pz),
+                Color3.fromRGB(100, 100, 220))
+
+            -- Corde (visuel statique initial — PendulumManager l'anime)
+            local rope = part(platFolder, "Corde_" .. i,
+                Vector3.new(0.25, PEND_ROPE, 0.25),
+                CFrame.new(px, py - PEND_ROPE / 2, pz),
+                Color3.fromRGB(150, 150, 150))
+            rope.CanCollide = false
+
+            -- Boule (taguée pour PendulumManager)
+            local ballName = string.format("Pendule_%d_%d", index, i)
+            local ball = part(platFolder, ballName,
+                Vector3.new(PEND_BALL_R * 2, PEND_BALL_R * 2, PEND_BALL_R * 2),
+                CFrame.new(px, py - PEND_ROPE, pz),
+                cfg.color)
+            ball.Shape = Enum.PartType.Ball
+            -- Attributs lus par PendulumManager
+            ball:SetAttribute("PivotX",    px)
+            ball:SetAttribute("PivotY",    py)
+            ball:SetAttribute("PivotZ",    pz)
+            ball:SetAttribute("Phase",     cfg.phase)
+            ball:SetAttribute("Speed",     cfg.speed)
+            ball:SetAttribute("Amplitude", math.rad(42))
+            ball:SetAttribute("RopeLen",   PEND_ROPE)
+            ball:SetAttribute("RopeName",  "Corde_" .. i)
+            CollectionService:AddTag(ball, "PendulumBall")
+        end
+
+        -- Liens et checkpoint (même structure que hasCylinders)
+        part(platFolder, "Plat_Link1",
+            Vector3.new(pendW - 4, 1.2, 14),
+            CFrame.new(0, yBase, zStart + 95), sectionDef.color)
+        part(platFolder, "Plat_Link2",
+            Vector3.new(pendW - 4, 1.2, 14),
+            CFrame.new(0, yBase, zStart + 112), sectionDef.color)
+
+        local cpName = string.format("Checkpoint_%02d", index)
+        local cp = part(cpFolder, cpName,
+            Vector3.new(pendW + 4, 8, 10),
+            CFrame.new(0, yBase + 4, zStart + 90),
+            Color3.fromRGB(0, 210, 100), Enum.Material.Neon, 0.6)
+        cp.CanCollide = false
+        cp:SetAttribute("SectionIdx", index)
+        cp:SetAttribute("CheckpointLabel", cpName)
+        tag(cp, "Checkpoint")
+
+        return yBase  -- section plate
+    end
 
     -- ── Plateformes (5 par section) ──────────────────────────
     -- Gaps de 6-8 studs entre plateformes (jumpable avec JumpPower=60)
@@ -384,28 +542,14 @@ local function buildLobby(ws)
         sp.Name      = "Spawn_" .. i
         sp.Size      = Vector3.new(5, 1, 5)
         sp.CFrame    = CFrame.new(-15 + col * 10, BASE_Y + 0.5, -25 + row * 10)
-        sp.Anchored  = true
-        sp.Neutral   = true
-        sp.Duration  = 0
-        sp.Parent    = spawnFolder
+        sp.Anchored      = true
+        sp.Neutral       = true
+        sp.Duration      = 0
+        sp.Transparency  = 1        -- invisible mais toujours fonctionnel
+        sp.TopSurface    = Enum.SurfaceType.Smooth
+        sp.BottomSurface = Enum.SurfaceType.Smooth
+        sp.Parent        = spawnFolder
     end
-
-    -- Pont reliant le lobby au parcours (plancher solide de Z=68 à Z=200)
-    part(lob, "Pont",
-        Vector3.new(20, 1, 134),
-        CFrame.new(0, BASE_Y - 0.5, 134),  -- couvre Z=67 à Z=201
-        Color3.fromRGB(210, 190, 150)
-    )
-
-    -- Point de départ de manche (marqueur visuel + plateforme physique)
-    local depart = part(lob, "DebutManche",
-        Vector3.new(30, 1, 10),
-        CFrame.new(0, BASE_Y + 0.5, COURSE_START_Z - 20),
-        Color3.fromRGB(100, 200, 255),
-        Enum.Material.Neon,
-        0.5
-    )
-    depart:SetAttribute("IsStartPad", true)
 
     -- Panneaux Leaderboard (2 panneaux face aux joueurs)
     local lbFolder = folder(lob, "Leaderboards")
@@ -453,9 +597,22 @@ if Workspace:FindFirstChild("Lobby")  then Workspace.Lobby:Destroy()  end
 print("[MapBuilder] ━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
 print("[MapBuilder] Génération du squelette map...")
 
--- Lobby
+-- Lobby (construit à X=0 puis déplacé loin du parcours)
 buildLobby(Workspace)
-print("[MapBuilder] ✅ Lobby généré (spawns, panneaux, portail)")
+do
+    local lob = Workspace:FindFirstChild("Lobby")
+    if lob then
+        for _, desc in ipairs(lob:GetDescendants()) do
+            if desc:IsA("BasePart")
+               and desc.Name ~= "Sol"       -- sol chocolat reste sous le parcours (X=0)
+               and desc.Name ~= "KillFloor" -- kill floor reste sous le parcours (X=0)
+            then
+                desc.CFrame = desc.CFrame + Vector3.new(LOBBY_OFFSET_X, 0, 0)
+            end
+        end
+    end
+end
+print("[MapBuilder] ✅ Lobby généré (spawns, panneaux, portail) — déplacé à X=" .. LOBBY_OFFSET_X)
 
 -- Parcours
 local courseFolder = folder(Workspace, "Course")

@@ -1,8 +1,7 @@
 .DS_Store
 _output/*.md
 
-# Rojo build output
-default.project.json
+# Rojo build output (default.project.json est versionné intentionnellement)
 *.rbxl
 *.rbxlx
 *.rbxm

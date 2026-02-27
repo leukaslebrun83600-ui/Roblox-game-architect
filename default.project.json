@@ -1,0 +1,106 @@
+{
+  "name": "TrustNoOne",
+  "tree": {
+    "$className": "DataModel",
+
+    "ServerScriptService": {
+      "$className": "ServerScriptService",
+      "Init":                { "$path": "src/server/Init.server.lua" },
+      "RoundManager":        { "$path": "src/server/RoundManager.server.lua" },
+      "TrapManager":         { "$path": "src/server/TrapManager.server.lua" },
+      "KarmaManager":        { "$path": "src/server/KarmaManager.server.lua" },
+      "CheckpointManager":   { "$path": "src/server/CheckpointManager.server.lua" },
+      "DataManager":         { "$path": "src/server/DataManager.server.lua" },
+      "ChallengeManager":    { "$path": "src/server/ChallengeManager.server.lua" },
+      "LeaderboardManager":  { "$path": "src/server/LeaderboardManager.server.lua" },
+      "MarketplaceManager":  { "$path": "src/server/MarketplaceManager.server.lua" },
+      "BadgeManager":        { "$path": "src/server/BadgeManager.server.lua" },
+      "MapBuilder": {
+        "$path": "src/server/MapBuilder.server.lua",
+        "$properties": { "Disabled": true }
+      },
+      "RotatingCylinders":  { "$path": "src/server/RotatingCylinders.server.lua" },
+      "PendulumManager":   { "$path": "src/server/PendulumManager.server.lua" }
+    },
+
+    "ServerStorage": {
+      "$className": "ServerStorage",
+      "Modules": {
+        "$className": "Folder",
+        "TrapModule":      { "$path": "src/server-storage/Modules/TrapModule.lua" },
+        "KarmaModule":     { "$path": "src/server-storage/Modules/KarmaModule.lua" },
+        "ChallengeModule": { "$path": "src/server-storage/Modules/ChallengeModule.lua" }
+      },
+      "Config": {
+        "$className": "Folder",
+        "GameConfig":      { "$path": "src/server-storage/Config/GameConfig.lua" },
+        "TrapConfig":      { "$path": "src/server-storage/Config/TrapConfig.lua" },
+        "KarmaConfig":     { "$path": "src/server-storage/Config/KarmaConfig.lua" },
+        "ChallengeConfig": { "$path": "src/server-storage/Config/ChallengeConfig.lua" }
+      }
+    },
+
+    "ReplicatedStorage": {
+      "$className": "ReplicatedStorage",
+      "Events": {
+        "$className": "Folder",
+        "RequestActivateTrap":   { "$className": "RemoteEvent" },
+        "RequestSacrifice":      { "$className": "RemoteEvent" },
+        "RequestSkipCheckpoint": { "$className": "RemoteEvent" },
+        "RequestShield":         { "$className": "RemoteEvent" },
+        "RoundStateChanged":     { "$className": "RemoteEvent" },
+        "UpdateKarma":           { "$className": "RemoteEvent" },
+        "ShowKarmaNotification": { "$className": "RemoteEvent" },
+        "UpdatePosition":        { "$className": "RemoteEvent" },
+        "TrapActivated":         { "$className": "RemoteEvent" },
+        "SacrificeActivated":    { "$className": "RemoteEvent" },
+        "RespawnAt":             { "$className": "RemoteEvent" },
+        "ShowTooltip":           { "$className": "RemoteEvent" },
+        "PlayEffect":            { "$className": "RemoteEvent" },
+        "UpdateChallenges":      { "$className": "RemoteEvent" },
+        "ButtonUsed":            { "$className": "RemoteEvent" },
+        "GetLeaderboard":        { "$className": "RemoteFunction" },
+        "GetChallenges":         { "$className": "RemoteFunction" },
+        "GetPlayerData":         { "$className": "RemoteFunction" }
+      },
+      "Modules": {
+        "$className": "Folder",
+        "Constants": { "$path": "src/shared/Modules/Constants.lua" },
+        "Utils":     { "$path": "src/shared/Modules/Utils.lua" }
+      },
+      "Assets": {
+        "$className": "Folder",
+        "Effects": { "$className": "Folder" },
+        "Sounds":  { "$className": "Folder" }
+      }
+    },
+
+    "StarterPlayer": {
+      "$className": "StarterPlayer",
+      "StarterPlayerScripts": {
+        "$className": "StarterPlayerScripts",
+        "Init":               { "$path": "src/client/Init.client.lua" },
+        "UIController":       { "$path": "src/client/UIController.client.lua" },
+        "EffectsController":  { "$path": "src/client/EffectsController.client.lua" },
+        "InputController":    { "$path": "src/client/InputController.client.lua" },
+        "TooltipController":  { "$path": "src/client/TooltipController.client.lua" }
+      }
+    },
+
+    "StarterGui": {
+      "$className": "StarterGui",
+      "HUD": {
+        "$className": "ScreenGui",
+        "$properties": { "ResetOnSpawn": false }
+      },
+      "Menus": {
+        "$className": "ScreenGui",
+        "$properties": { "ResetOnSpawn": false }
+      },
+      "Notifications": {
+        "$className": "ScreenGui",
+        "$properties": { "ResetOnSpawn": false }
+      }
+    }
+  }
+}
