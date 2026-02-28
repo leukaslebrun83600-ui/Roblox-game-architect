@@ -55,12 +55,13 @@ local SECTIONS = {
         note   = "Boules en ligne — saute de sphère en sphère !",
     },
     {
-        name   = "Section_04_Cascade",
-        color  = Color3.fromRGB(255, 140,  80),  -- orange bonbon
-        traps  = { "Projectile" },
-        sac    = true,
-        yBias  = -8,  -- escalier descendant
-        note   = "Première introduction au bouton Sacrifice",
+        name          = "Section_04_TripleVoie",
+        color         = Color3.fromRGB(255, 213,  79),  -- caramel
+        traps         = {},
+        sac           = false,
+        yBias         = 0,
+        hasTriplePath = true,
+        note          = "Triple voie — centre cases disparaissantes / côtés piques mortels",
     },
     {
         name   = "Section_05_Soucoupes",
@@ -481,7 +482,7 @@ local function buildSection(courseFolder, sectionDef, index, startY)
     end
 
     -- ── Section pendules oscillants ──────────────────────────
-    -- Layout : Plat_A →[gap]→ Plat_B (grande, 3 pendules au-dessus) →[cont.]→ Plat_E → Checkpoint → Links
+    -- Layout : Plat_B (grande, dz=7→79, 6 pendules au-dessus) →[cont.]→ Plat_E → Checkpoint → Links
     -- Les boules sont taguées "PendulumBall" → animées par PendulumManager.server.lua
     if sectionDef.hasPendulums then
         local PEND_PIVOT_H = 15    -- hauteur du pivot au-dessus de la surface
@@ -493,27 +494,26 @@ local function buildSection(courseFolder, sectionDef, index, startY)
         -- surface Y = yBase + 0.6, pivot au-dessus
         local pivotY = yBase + 0.6 + PEND_PIVOT_H  -- yBase + 15.6
 
-        -- Plateforme d'approche
-        part(platFolder, "Plat_A",
-            Vector3.new(pendW, 1.2, 14),
-            CFrame.new(0, yBase, zStart + 8), sectionDef.color)
-
-        -- Grande plateforme principale (couvre toute la zone des 3 pendules)
-        -- dz=21 à dz=79 (58 studs)
+        -- Grande plateforme principale (étendue vers l'arrière, dz=7 à dz=79, 6 pendules au-dessus)
+        -- taille=72, centre=43 → bord gauche=dz=7, bord droit=dz=79
         part(platFolder, "Plat_B",
-            Vector3.new(pendW, 1.2, 58),
-            CFrame.new(0, yBase, zStart + 50), sectionDef.color)
+            Vector3.new(pendW, 1.2, 72),
+            CFrame.new(0, yBase, zStart + 43), sectionDef.color)
 
         -- Plateforme de sortie
         part(platFolder, "Plat_E",
             Vector3.new(pendW, 1.2, 12),
             CFrame.new(0, yBase, zStart + 84), sectionDef.color)
 
-        -- 3 pendules espacés de 18 studs, phases décalées → jamais tous du même côté
+        -- 6 pendules espacés de 12 studs, phases décalées → jamais tous du même côté
+        -- 3 nouveaux (dz=13/25/37) étendus vers l'arrière + 3 existants repositionnés
         local pendConfigs = {
-            { dz = 32, phase = 0,           speed = BASE_SPD,       color = Color3.fromRGB(220, 50,  50)  },
-            { dz = 50, phase = math.pi,     speed = BASE_SPD,       color = Color3.fromRGB(50,  200, 200) },
-            { dz = 68, phase = math.pi / 2, speed = BASE_SPD * 0.9, color = Color3.fromRGB(80,  200, 80)  },
+            { dz = 13, phase = 0,               speed = BASE_SPD,        color = Color3.fromRGB(220, 50,  50)  },
+            { dz = 25, phase = math.pi,         speed = BASE_SPD,        color = Color3.fromRGB(50,  200, 200) },
+            { dz = 37, phase = math.pi / 2,     speed = BASE_SPD * 0.9,  color = Color3.fromRGB(80,  200, 80)  },
+            { dz = 49, phase = math.pi * 3 / 4, speed = BASE_SPD * 1.1,  color = Color3.fromRGB(220, 50,  50)  },
+            { dz = 61, phase = math.pi / 4,     speed = BASE_SPD,        color = Color3.fromRGB(50,  200, 200) },
+            { dz = 73, phase = math.pi * 5 / 4, speed = BASE_SPD * 0.85, color = Color3.fromRGB(80,  200, 80)  },
         }
 
         for i, cfg in ipairs(pendConfigs) do
@@ -699,11 +699,129 @@ local function buildSection(courseFolder, sectionDef, index, startY)
         return yBase  -- section plate
     end
 
+    -- ── Section triple voie ───────────────────────────────────
+    -- Centre  : 6 plateformes disparaissantes (tag "FadePlat")
+    -- Côtés   : chemin plein avec piques mortels (tag "Spike")
+    -- Layout  : Plat_A →[gap]→ [3 voies 82 studs] →[6 gap]→ Plat_E → Checkpoint
+    if sectionDef.hasTriplePath then
+        local CENTER_W  = 8
+        local SIDE_W    = 8
+        local GAP_X     = 12
+        local LX        = -(CENTER_W / 2 + GAP_X + SIDE_W / 2)  -- -20
+        local RX        =  (CENTER_W / 2 + GAP_X + SIDE_W / 2)  -- +20
+        local FULL_W    = math.abs(LX) * 2 + SIDE_W + 4          -- 44
+
+        local PATH_LEN  = 82
+        local PATH_DZ   = 15   -- dz depuis zStart où les voies commencent
+
+        local N_FADE    = 6
+        local FADE_D    = 8
+        local FADE_GAP  = 14
+        local FADE_DEL  = 0.5
+        local FADE_RET  = 3.5
+
+        local SPIKE_R   = 0.55
+        local SPIKE_H   = 4.5
+        local SPIKE_UP  = 1.0
+        local SPIKE_DN  = 2.5
+        local SPIKE_CYCLE = SPIKE_UP + SPIKE_DN
+        local SPIKE_DZS = { 8, 22, 40, 58, 76 }
+
+        local COLOR_FADE  = Color3.fromRGB( 80, 200, 255)
+        local COLOR_SPIKE = Color3.fromRGB(200, 200, 220)
+        local COLOR_IND   = Color3.fromRGB(255,  80,  80)
+
+        local pathStartZ = zStart + PATH_DZ
+        local surfY      = yBase + 0.6  -- dessus des plateformes
+
+        -- Plateforme de départ (large)
+        part(platFolder, "Plat_A",
+            Vector3.new(FULL_W, 1.2, 14),
+            CFrame.new(0, yBase, zStart + 8), sectionDef.color)
+
+        -- Checkpoint juste avant les voies
+        local cpName = string.format("Checkpoint_%02d", index)
+        local cp = part(cpFolder, cpName,
+            Vector3.new(FULL_W + 4, 8, 10),
+            CFrame.new(0, yBase + 4, zStart + 12),
+            Color3.fromRGB(0, 210, 100), Enum.Material.Neon, 0.6)
+        cp.CanCollide = false
+        cp:SetAttribute("SectionIdx", index)
+        cp:SetAttribute("CheckpointLabel", cpName)
+        tag(cp, "Checkpoint")
+
+        -- Voie gauche (continue)
+        part(platFolder, "LeftPath",
+            Vector3.new(SIDE_W, 1.2, PATH_LEN),
+            CFrame.new(LX, yBase, pathStartZ + PATH_LEN / 2), sectionDef.color)
+
+        -- Voie droite (continue)
+        part(platFolder, "RightPath",
+            Vector3.new(SIDE_W, 1.2, PATH_LEN),
+            CFrame.new(RX, yBase, pathStartZ + PATH_LEN / 2), sectionDef.color)
+
+        -- Plateformes centrales disparaissantes
+        for i = 1, N_FADE do
+            local pz = pathStartZ + 4 + (i - 1) * FADE_GAP + FADE_D / 2
+            local fp = part(platFolder, "FadePlat_" .. i,
+                Vector3.new(CENTER_W, 1.2, FADE_D),
+                CFrame.new(0, yBase, pz), COLOR_FADE)
+            fp:SetAttribute("FadeDelay",  FADE_DEL)
+            fp:SetAttribute("FadeReturn", FADE_RET)
+            CollectionService:AddTag(fp, "FadePlat")
+        end
+
+        -- Piques sur les voies latérales
+        local function addSpikes(sideX, phaseShift)
+            local retY = surfY - SPIKE_H / 2 - 0.05
+            local extY = surfY + SPIKE_H / 2
+            for si, dz in ipairs(SPIKE_DZS) do
+                local spz   = pathStartZ + dz
+                local phase = phaseShift + (si - 1) * (SPIKE_CYCLE / #SPIKE_DZS)
+
+                -- Indicateur rouge au sol
+                local ind = part(platFolder, "Ind_" .. sideX .. "_" .. si,
+                    Vector3.new(1.6, 0.12, 1.6),
+                    CFrame.new(sideX, surfY + 0.06, spz), COLOR_IND)
+                ind.CanCollide  = false
+                ind.Transparency = 0.3
+
+                -- Pique (cylindre fin, caché sous la surface au départ)
+                local spike = part(platFolder, "Spike_" .. sideX .. "_" .. si,
+                    Vector3.new(SPIKE_H, SPIKE_R * 2, SPIKE_R * 2),
+                    CFrame.new(sideX, retY, spz) * CFrame.Angles(0, 0, math.pi / 2),
+                    COLOR_SPIKE)
+                spike.Shape      = Enum.PartType.Cylinder
+                spike.CanCollide = false
+                spike.Transparency = 1
+                spike:SetAttribute("PosX",    sideX)
+                spike:SetAttribute("PosY_ret", retY)
+                spike:SetAttribute("PosY_ext", extY)
+                spike:SetAttribute("PosZ",    spz)
+                spike:SetAttribute("Phase",   phase)
+                spike:SetAttribute("SpikeUp", SPIKE_UP)
+                spike:SetAttribute("SpikeDn", SPIKE_DN)
+                CollectionService:AddTag(spike, "Spike")
+            end
+        end
+
+        addSpikes(LX, 0)
+        addSpikes(RX, SPIKE_CYCLE / 2)  -- voie droite déphasée
+
+        -- Plateforme d'arrivée (gap de 6 studs après les voies)
+        local arrivalZ = pathStartZ + PATH_LEN + 13  -- zStart + 110
+        part(platFolder, "Plat_E",
+            Vector3.new(FULL_W, 1.2, 14),
+            CFrame.new(0, yBase, arrivalZ), sectionDef.color)
+
+        return yBase
+    end
+
     -- ── Zone d'arrivée directe (après les cylindres) ─────────
     -- Une grande plateforme plate + la ligne d'arrivée. Aucun saut.
     if sectionDef.hasFinalZone then
         local FINISH_W = 30   -- largeur de la plateforme d'arrivée
-        local FINISH_D = 70   -- longueur (profondeur en Z)
+        local FINISH_D = 35   -- longueur (profondeur en Z)
 
         -- Grande plateforme d'arrivée (au niveau yBase = hauteur sortie pente)
         part(secFolder, "PlateformeArrivee",

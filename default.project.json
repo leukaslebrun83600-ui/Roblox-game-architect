@@ -25,7 +25,8 @@
       "DiscManager":        { "$path": "src/server/DiscManager.server.lua" },
       "BounceManager":      { "$path": "src/server/BounceManager.server.lua" },
       "PunchManager":       { "$path": "src/server/PunchManager.server.lua" },
-      "PunchTest":          { "$path": "src/server/PunchTest.server.lua" }
+      "FadeManager":        { "$path": "src/server/FadeManager.server.lua" },
+      "SpikeManager":       { "$path": "src/server/SpikeManager.server.lua" },
     },
 
     "ServerStorage": {
