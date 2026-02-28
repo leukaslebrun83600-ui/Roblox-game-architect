@@ -115,13 +115,22 @@ local SECTIONS = {
         note   = "Disques rotatifs — saute par-dessus les bras !",
     },
     {
-        name   = "Section_11_Chateau",
-        color  = Color3.fromRGB(255, 215,   0),  -- château doré
-        traps  = {},
-        sac    = false,
-        yBias  = 0,    -- plat : pas de plateformes flottantes à l'arrivée
-        isEnd  = true,
-        note   = "Zone d'arrivée — grande plateforme plate",
+        name     = "Section_11_PunchCylindres",
+        color    = Color3.fromRGB(255, 140,  60),  -- orange chaud (contraste avec les cylindres jaunes)
+        traps    = {},
+        sac      = false,
+        yBias    = 0,
+        hasPunch = true,
+        note     = "Pente glissante (13°) + 7 cylindres oscillants — piège final !",
+    },
+    {
+        name         = "Section_12_Chateau",
+        color        = Color3.fromRGB(255, 215,   0),  -- château doré
+        traps        = {},
+        sac          = false,
+        yBias        = 0,
+        hasFinalZone = true,
+        note         = "Zone d'arrivée directe — grande plateforme + ligne d'arrivée",
     },
 }
 
@@ -688,6 +697,117 @@ local function buildSection(courseFolder, sectionDef, index, startY)
         tag(cp, "Checkpoint")
 
         return yBase  -- section plate
+    end
+
+    -- ── Zone d'arrivée directe (après les cylindres) ─────────
+    -- Une grande plateforme plate + la ligne d'arrivée. Aucun saut.
+    if sectionDef.hasFinalZone then
+        local FINISH_W = 30   -- largeur de la plateforme d'arrivée
+        local FINISH_D = 70   -- longueur (profondeur en Z)
+
+        -- Grande plateforme d'arrivée (au niveau yBase = hauteur sortie pente)
+        part(secFolder, "PlateformeArrivee",
+            Vector3.new(FINISH_W, 1.2, FINISH_D),
+            CFrame.new(0, yBase, zStart + FINISH_D / 2 + 8),
+            sectionDef.color)
+
+        -- Ligne d'arrivée (trigger ArrivalZone)
+        local arrival = part(secFolder, "ArrivalZone",
+            Vector3.new(FINISH_W, 12, 6),
+            CFrame.new(0, yBase + 6, zStart + FINISH_D + 14),
+            Color3.fromRGB(255, 215, 0),
+            Enum.Material.Neon, 0.35)
+        arrival.CanCollide = false
+        tag(arrival, "ArrivalZone")
+
+        return yBase
+    end
+
+    -- ── Section pente + cylindres oscillants (punch final) ───
+    -- Layout : Plat_A →[0]→ Slope (72 studs, +13°, 7 cylindres) →[8]→ Plat_E → Link1
+    -- Cylindres taguées "PunchCylinder" → animées par PunchManager.server.lua
+    if sectionDef.hasPunch then
+        local PLAT_H         = 1.2
+        local TILT           = math.rad(13)
+        local PLAT_D         = 72    -- longueur de la pente
+        local SLOPE_START_DZ = 15    -- dz depuis zStart où la pente commence
+        local CYL_R          = 2.8
+        local CYL_H          = 9
+        local SWING          = 8
+        local CYL_COLOR      = Color3.fromRGB(255, 198, 41)  -- jaune Fall Guys
+
+        local function slopeSurfY(dz_on_slope)
+            return yBase + dz_on_slope * math.sin(TILT)
+        end
+
+        local exitSurfY = yBase + PLAT_D * math.sin(TILT)  -- ≈ yBase + 16.2
+
+        -- Plateforme d'approche (au niveau yBase)
+        part(platFolder, "Plat_A",
+            Vector3.new(platW, PLAT_H, 14),
+            CFrame.new(0, yBase, zStart + 8), sectionDef.color)
+
+        -- Pente inclinée (légèrement glissante)
+        local platCenY = yBase + (PLAT_D / 2) * math.sin(TILT)
+        local platCenZ = zStart + SLOPE_START_DZ + PLAT_D / 2
+        local slopePart = part(platFolder, "Slope",
+            Vector3.new(platW, PLAT_H, PLAT_D),
+            CFrame.new(0, platCenY, platCenZ) * CFrame.Angles(-TILT, 0, 0),
+            sectionDef.color)
+        slopePart.CustomPhysicalProperties = PhysicalProperties.new(0.7, 0.15, 0, 0, 0)
+
+        -- 7 cylindres oscillants (espacés de 10 studs sur la pente)
+        local cylDefs = {
+            { dz =  5, speed = 0.45, phase = 0                },
+            { dz = 15, speed = 0.40, phase = math.pi          },
+            { dz = 25, speed = 0.50, phase = math.pi / 2      },
+            { dz = 35, speed = 0.42, phase = 0                },
+            { dz = 45, speed = 0.48, phase = math.pi * 3 / 4  },
+            { dz = 55, speed = 0.38, phase = math.pi          },
+            { dz = 65, speed = 0.46, phase = math.pi / 4      },
+        }
+
+        for i, cd in ipairs(cylDefs) do
+            local cylSurfY = slopeSurfY(cd.dz)
+            local cylCenY  = cylSurfY + CYL_H / 2
+            local cylZ     = zStart + SLOPE_START_DZ + cd.dz
+
+            local cyl = part(platFolder, "PunchCyl_" .. i,
+                Vector3.new(CYL_H, CYL_R * 2, CYL_R * 2),
+                CFrame.new(0, cylCenY, cylZ) * CFrame.Angles(0, 0, math.pi / 2),
+                CYL_COLOR)
+            cyl.Shape = Enum.PartType.Cylinder
+            cyl:SetAttribute("PosX",  0)
+            cyl:SetAttribute("PosY",  cylCenY)
+            cyl:SetAttribute("PosZ",  cylZ)
+            cyl:SetAttribute("Speed", cd.speed)
+            cyl:SetAttribute("Phase", cd.phase)
+            cyl:SetAttribute("Swing", SWING)
+            CollectionService:AddTag(cyl, "PunchCylinder")
+        end
+
+        -- Plateforme de sortie (au sommet de la pente)
+        part(platFolder, "Plat_E",
+            Vector3.new(platW, PLAT_H, 14),
+            CFrame.new(0, exitSurfY, zStart + 95), sectionDef.color)
+
+        -- Plateforme de liaison vers le Chateau
+        part(platFolder, "Plat_Link1",
+            Vector3.new(platW - 4, PLAT_H, 14),
+            CFrame.new(0, exitSurfY, zStart + 112), sectionDef.color)
+
+        -- Checkpoint (au pied de la pente, avant les cylindres)
+        local cpName = string.format("Checkpoint_%02d", index)
+        local cp = part(cpFolder, cpName,
+            Vector3.new(platW + 4, 8, 10),
+            CFrame.new(0, yBase + 4, zStart + 13),
+            Color3.fromRGB(0, 210, 100), Enum.Material.Neon, 0.6)
+        cp.CanCollide = false
+        cp:SetAttribute("SectionIdx", index)
+        cp:SetAttribute("CheckpointLabel", cpName)
+        tag(cp, "Checkpoint")
+
+        return exitSurfY  -- le Chateau commence à cette hauteur
     end
 
     -- ── Plateformes (5 par section) ──────────────────────────

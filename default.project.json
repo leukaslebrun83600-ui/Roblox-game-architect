@@ -23,7 +23,9 @@
       "PendulumManager":    { "$path": "src/server/PendulumManager.server.lua" },
       "SpinnerManager":     { "$path": "src/server/SpinnerManager.server.lua" },
       "DiscManager":        { "$path": "src/server/DiscManager.server.lua" },
-      "BounceManager":      { "$path": "src/server/BounceManager.server.lua" }
+      "BounceManager":      { "$path": "src/server/BounceManager.server.lua" },
+      "PunchManager":       { "$path": "src/server/PunchManager.server.lua" },
+      "PunchTest":          { "$path": "src/server/PunchTest.server.lua" }
     },
 
     "ServerStorage": {
