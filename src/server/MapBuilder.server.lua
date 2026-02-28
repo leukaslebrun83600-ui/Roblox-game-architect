@@ -47,7 +47,7 @@ local SECTIONS = {
     },
     {
         name   = "Section_03_Boules",
-        color  = Color3.fromRGB(150, 220, 80),   -- vert lime bonbon
+        color  = Color3.fromRGB(255, 120, 180),  -- rose bonbon
         traps  = {},
         sac    = false,
         yBias  = 0,
