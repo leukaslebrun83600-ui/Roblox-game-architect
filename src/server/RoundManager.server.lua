@@ -99,7 +99,8 @@ end
 -- ============================================================
 
 local function getCourseId()
-    return ROUND_COURSE[roundNumber] or 1
+    -- Pour les manches au-delà de la table, utilise la dernière course définie
+    return ROUND_COURSE[roundNumber] or ROUND_COURSE[#ROUND_COURSE] or 1
 end
 
 local function getCourseStartZ()
@@ -566,12 +567,14 @@ local function mainLoop()
                 roundNumber, remaining))
             runRound()
 
-            -- Après la manche : s'il reste ≤1 joueur, le tournoi est terminé
+            -- Après la manche : on s'arrête si tout le monde est éliminé
+            -- ou si toutes les manches définies ont été jouées
             local stillIn = 0
             for p in pairs(tournamentPlayers) do
                 if p.Parent then stillIn += 1 end
             end
-            if stillIn <= 1 then break end
+            if stillIn == 0 then break end  -- plus personne
+            if roundNumber >= #GameConfig.Tournament.ROUNDS then break end  -- toutes les manches jouées
         end
 
         -- Champion
