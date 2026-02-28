@@ -27,6 +27,8 @@
       "PunchManager":       { "$path": "src/server/PunchManager.server.lua" },
       "FadeManager":        { "$path": "src/server/FadeManager.server.lua" },
       "SpikeManager":       { "$path": "src/server/SpikeManager.server.lua" },
+      "CylinderMazeTest":   { "$path": "src/server/CylinderMazeTest.server.lua" },
+      "WallGateTest":       { "$path": "src/server/WallGateTest.server.lua" }
     },
 
     "ServerStorage": {
@@ -65,6 +67,8 @@
         "PlayEffect":            { "$className": "RemoteEvent" },
         "UpdateChallenges":      { "$className": "RemoteEvent" },
         "ButtonUsed":            { "$className": "RemoteEvent" },
+        "TeleportToTest":        { "$className": "RemoteEvent" },
+        "TeleportToWallGate":    { "$className": "RemoteEvent" },
         "GetLeaderboard":        { "$className": "RemoteFunction" },
         "GetChallenges":         { "$className": "RemoteFunction" },
         "GetPlayerData":         { "$className": "RemoteFunction" }
