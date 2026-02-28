@@ -764,7 +764,7 @@ local function buildLobby(ws)
     part(lob, "SolLobby",
         Vector3.new(140, 1, 140),
         CFrame.new(0, BASE_Y - 0.5, 0),
-        Color3.fromRGB(87, 45, 7),
+        Color3.fromRGB(255, 166, 201),  -- carnation pink
         Enum.Material.SmoothPlastic
     )
 
@@ -785,7 +785,7 @@ local function buildLobby(ws)
     local sol = part(lob, "Sol",
         Vector3.new(4000, 4, 4000),
         CFrame.new(0, -25, 500),
-        Color3.fromRGB(87, 45, 7),
+        Color3.fromRGB(255, 166, 201),  -- carnation pink
         Enum.Material.SmoothPlastic
     )
     sol.CanCollide = false
