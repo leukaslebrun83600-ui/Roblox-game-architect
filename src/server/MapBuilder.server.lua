@@ -46,7 +46,16 @@ local SECTIONS = {
         note   = "Plateforme tournante — saute et ride !",
     },
     {
-        name   = "Section_03_Cascade",
+        name   = "Section_03_Boules",
+        color  = Color3.fromRGB(150, 220, 80),   -- vert lime bonbon
+        traps  = {},
+        sac    = false,
+        yBias  = 0,
+        hasBalls = true,
+        note   = "Boules en ligne — saute de sphère en sphère !",
+    },
+    {
+        name   = "Section_04_Cascade",
         color  = Color3.fromRGB(255, 140,  80),  -- orange bonbon
         traps  = { "Projectile" },
         sac    = true,
@@ -54,7 +63,7 @@ local SECTIONS = {
         note   = "Première introduction au bouton Sacrifice",
     },
     {
-        name   = "Section_04_Cylindres",
+        name   = "Section_05_Cylindres",
         color  = Color3.fromRGB(240, 240, 255),  -- guimauve blanche
         traps  = {},
         sac    = false,
@@ -63,7 +72,7 @@ local SECTIONS = {
         note   = "Cylindres tournants — cours ou tombe !",
     },
     {
-        name   = "Section_05_Sucette",
+        name   = "Section_06_Sucette",
         color  = Color3.fromRGB(255, 100, 200),  -- rose vif
         traps  = { "FloorCollapse" },
         sac    = true,
@@ -71,7 +80,7 @@ local SECTIONS = {
         note   = "Première section verticale — montée en spirale",
     },
     {
-        name   = "Section_06_Pendules",
+        name   = "Section_07_Pendules",
         color  = Color3.fromRGB(80, 200, 120),   -- vert bonbon
         traps  = {},
         sac    = false,
@@ -80,7 +89,7 @@ local SECTIONS = {
         note   = "Pendules oscillants — passe entre les boules !",
     },
     {
-        name   = "Section_07_Chocolat",
+        name   = "Section_08_Chocolat",
         color  = Color3.fromRGB(139, 80, 30),    -- chocolat brun
         traps  = { "WallPusher", "FloorCollapse" },
         sac    = true,
@@ -88,7 +97,7 @@ local SECTIONS = {
         note   = "Pente raide — joueurs regroupés, parfait pour les pièges",
     },
     {
-        name   = "Section_08_Spinners",
+        name   = "Section_09_Spinners",
         color  = Color3.fromRGB(197, 193, 227),  -- lavande
         traps  = {},
         sac    = false,
@@ -97,7 +106,7 @@ local SECTIONS = {
         note   = "Disques rotatifs — saute par-dessus les bras !",
     },
     {
-        name   = "Section_09_Chateau",
+        name   = "Section_10_Chateau",
         color  = Color3.fromRGB(255, 215,   0),  -- château doré
         traps  = {},
         sac    = false,
@@ -209,6 +218,74 @@ local function buildSection(courseFolder, sectionDef, index, startY)
             CFrame.new(0, yBase, zStart + 76), sectionDef.color)
 
         -- Liaisons vers la section suivante
+        part(platFolder, "Plat_Link1",
+            Vector3.new(platW - 4, 1.2, 14),
+            CFrame.new(0, yBase, zStart + 95), sectionDef.color)
+        part(platFolder, "Plat_Link2",
+            Vector3.new(platW - 4, 1.2, 14),
+            CFrame.new(0, yBase, zStart + 112), sectionDef.color)
+
+        -- Checkpoint
+        local cpName = string.format("Checkpoint_%02d", index)
+        local cp = part(cpFolder, cpName,
+            Vector3.new(platW + 4, 8, 10),
+            CFrame.new(0, yBase + 4, zStart + 90),
+            Color3.fromRGB(0, 210, 100), Enum.Material.Neon, 0.6)
+        cp.CanCollide = false
+        cp:SetAttribute("SectionIdx", index)
+        cp:SetAttribute("CheckpointLabel", cpName)
+        tag(cp, "Checkpoint")
+
+        return yBase  -- section plate
+    end
+
+    -- ── Section boules en ligne (style Total Wipeout) ────────
+    -- Layout : Plat_A →[5]→ Ball1 →[3]→ Ball2 →[3]→ Ball3 →[3]→ Ball4 →[4]→ Plat_E → Links
+    -- Sphères statiques : le défi vient de la surface courbe (glissant, imprécis)
+    if sectionDef.hasBalls then
+        local BALL_R  = 5      -- rayon des boules (diamètre 10 studs)
+        local SPACING = 13     -- centre-à-centre (gap surface = 3 studs)
+        local N_BALLS = 4
+        local PED_R   = 2.5    -- rayon du pied
+        local PED_H   = 8      -- hauteur du pied
+
+        -- Plateforme d'approche
+        -- Bord avant à dz=15, gap=5 jusqu'au bord de Ball1 (dz=20) ✓
+        part(platFolder, "Plat_A",
+            Vector3.new(platW, 1.2, 14),
+            CFrame.new(0, yBase, zStart + 8), sectionDef.color)
+
+        -- 4 boules + pieds blancs
+        -- Ball1 center : dz=25  |  Ball4 center : dz=64  |  Ball4 far edge : dz=69
+        local ball1Z = zStart + 25
+        for i = 1, N_BALLS do
+            local bz = ball1Z + (i - 1) * SPACING
+
+            -- Pied (cylindre vertical blanc)
+            -- Size (PED_H, PED_R*2, PED_R*2) : PED_H le long de l'axe (local X → world Y)
+            local pedY = yBase - BALL_R - PED_H / 2
+            local ped = part(platFolder, "Pedestal_" .. i,
+                Vector3.new(PED_H, PED_R * 2, PED_R * 2),
+                CFrame.new(0, pedY, bz) * CFrame.Angles(0, 0, math.pi / 2),
+                Color3.fromRGB(240, 240, 240))  -- blanc
+            ped.Shape = Enum.PartType.Cylinder
+
+            -- Boule (sphère, couleur de la section)
+            local ball = part(platFolder, "Ball_" .. i,
+                Vector3.new(BALL_R * 2, BALL_R * 2, BALL_R * 2),
+                CFrame.new(0, yBase, bz),
+                sectionDef.color)
+            ball.Shape = Enum.PartType.Ball
+        end
+
+        -- Plateforme de sortie
+        -- Ball4 far edge = dz=69, Plat_E left = dz=73 (gap=4), Plat_E center = dz=80
+        part(platFolder, "Plat_E",
+            Vector3.new(platW, 1.2, 14),
+            CFrame.new(0, yBase, zStart + 80), sectionDef.color)
+
+        -- Liaisons vers la section suivante
+        -- Plat_E right = dz=87 → Link1 left = dz=88 (contigu) ✓
         part(platFolder, "Plat_Link1",
             Vector3.new(platW - 4, 1.2, 14),
             CFrame.new(0, yBase, zStart + 95), sectionDef.color)
