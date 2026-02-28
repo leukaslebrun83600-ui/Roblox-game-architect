@@ -178,8 +178,8 @@ end
   TrapButton et TrapZone sont liés par l'attribut "LinkedZone".
 ]]
 
-local function buildSection(courseFolder, sectionDef, index, startY)
-    local zStart = COURSE_START_Z + (index - 1) * SECTION_LENGTH
+local function buildSection(courseFolder, sectionDef, index, startY, courseStartZ, courseId)
+    local zStart = (courseStartZ or COURSE_START_Z) + (index - 1) * SECTION_LENGTH
     local yBase  = startY  -- chaîné depuis la section précédente (plus de saut vertical)
 
     local secFolder  = folder(courseFolder, sectionDef.name)
@@ -836,6 +836,7 @@ local function buildSection(courseFolder, sectionDef, index, startY)
             Color3.fromRGB(255, 215, 0),
             Enum.Material.Neon, 0.35)
         arrival.CanCollide = false
+        arrival:SetAttribute("CourseId", courseId or 1)
         tag(arrival, "ArrivalZone")
 
         return yBase
@@ -1088,6 +1089,7 @@ local function buildSection(courseFolder, sectionDef, index, startY)
             0.4
         )
         arrival.CanCollide = false
+        arrival:SetAttribute("CourseId", courseId or 1)
         tag(arrival, "ArrivalZone")
     end
 
@@ -1233,13 +1235,67 @@ do
 end
 print("[MapBuilder] ✅ Lobby généré (spawns, panneaux, portail) — déplacé à X=" .. LOBBY_OFFSET_X)
 
--- Parcours
+-- ============================================================
+-- SECTIONS DU PARCOURS 2 (placeholder — personnaliser selon le design)
+-- Réutilise les mêmes types de pièges que Course 1, dans un ordre différent.
+-- ============================================================
+local COURSE2_START_Z = 5000  -- séparé de Course 1 (≈4.8 km d'écart)
+
+local COURSE2_SECTIONS = {
+    {
+        name  = "C2_Section_01_TripleVoie",
+        color = Color3.fromRGB(180, 100, 220),  -- violet
+        hasTriplePath = true,
+        note  = "Course 2 — Triple voie risque/sécurité",
+    },
+    {
+        name  = "C2_Section_02_Pendules",
+        color = Color3.fromRGB(80, 180, 255),   -- bleu vif
+        hasPendulums = true,
+        note  = "Course 2 — Pendules × 6",
+    },
+    {
+        name  = "C2_Section_03_Spinners",
+        color = Color3.fromRGB(100, 220, 150),  -- vert émeraude
+        hasSpinners = true,
+        note  = "Course 2 — Spinners rotatifs",
+    },
+    {
+        name  = "C2_Section_04_Disques",
+        color = Color3.fromRGB(255, 150, 50),   -- orange
+        hasDiscs = true,
+        note  = "Course 2 — Disques rotatifs",
+    },
+    {
+        name  = "C2_Section_05_PunchCylindres",
+        color = Color3.fromRGB(220, 80, 80),    -- rouge
+        hasPunch = true,
+        note  = "Course 2 — Cylindres oscillants (pente)",
+    },
+    {
+        name  = "C2_Section_06_Arrivee",
+        color = Color3.fromRGB(255, 213, 79),   -- caramel doré
+        hasFinalZone = true,
+        note  = "Course 2 — Ligne d'arrivée",
+    },
+}
+
+-- Parcours 1
 local courseFolder = folder(Workspace, "Course")
 local currentY = BASE_Y   -- hauteur chaînée entre sections
 for i, sectionDef in ipairs(SECTIONS) do
-    currentY = buildSection(courseFolder, sectionDef, i, currentY)
+    currentY = buildSection(courseFolder, sectionDef, i, currentY, COURSE_START_Z, 1)
     print(string.format("[MapBuilder] ✅ %d/%d — %s  (fin Y=%.1f)  %s",
         i, #SECTIONS, sectionDef.name, currentY, sectionDef.note))
+end
+
+-- Parcours 2
+local course2Folder = folder(Workspace, "Course2")
+local currentY2 = BASE_Y
+for i, sectionDef in ipairs(COURSE2_SECTIONS) do
+    currentY2 = buildSection(course2Folder, sectionDef, i, currentY2, COURSE2_START_Z, 2)
+    print(string.format("[MapBuilder] ✅ C2 %d/%d — %s  (fin Y=%.1f)  %s",
+        i, #COURSE2_SECTIONS, sectionDef.name, currentY2, sectionDef.note))
 end
 
 -- Résumé des tags créés

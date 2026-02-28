@@ -28,7 +28,12 @@ local arrivalOrder      = {}   -- ordre d'arrivée à la fin du parcours
 local tournamentPlayers = {}   -- [player] = true  (encore dans le tournoi)
 local roundNumber       = 0    -- numéro de la manche dans le tournoi en cours
 
-local COURSE_START_Z = 200
+-- Z de départ par identifiant de course (doit correspondre aux constantes MapBuilder)
+local COURSE_START_Z_BY_COURSE = { [1] = 200, [2] = 5000 }
+-- Mapping manche → identifiant de course
+local ROUND_COURSE = { [1] = 1, [2] = 2 }
+
+local arrivalZByCourse = {}  -- [courseId] = Z minimum de l'ArrivalZone (calculé au démarrage)
 
 -- ============================================================
 -- API PUBLIQUE
@@ -90,6 +95,23 @@ function RoundManager.EliminatePlayer(player)
 end
 
 -- ============================================================
+-- HELPERS — COURSE ACTIVE
+-- ============================================================
+
+local function getCourseId()
+    return ROUND_COURSE[roundNumber] or 1
+end
+
+local function getCourseStartZ()
+    return COURSE_START_Z_BY_COURSE[getCourseId()] or 200
+end
+
+local function getCourseName()
+    local id = getCourseId()
+    return id == 1 and "Course" or ("Course" .. id)
+end
+
+-- ============================================================
 -- UTILITAIRES
 -- ============================================================
 
@@ -104,7 +126,7 @@ local function getProgress(player)
     if not char then return 0 end
     local root = char:FindFirstChild("HumanoidRootPart")
     if not root then return 0 end
-    return math.max(0, root.Position.Z - COURSE_START_Z)
+    return math.max(0, root.Position.Z - getCourseStartZ())
 end
 
 local function buildRankings()
@@ -125,7 +147,7 @@ end
 -- ============================================================
 
 local function findFirstPlatform()
-    local course = workspace:FindFirstChild("Course")
+    local course = workspace:FindFirstChild(getCourseName())
     if not course then return nil end
     local bestPlat, bestZ = nil, math.huge
     for _, sec in ipairs(course:GetChildren()) do
@@ -151,7 +173,7 @@ local function spawnAtStart()
     end
 
     -- Remet les boutons à l'état initial
-    local course = workspace:FindFirstChild("Course")
+    local course = workspace:FindFirstChild(getCourseName())
     if course then
         for _, inst in ipairs(course:GetDescendants()) do
             if inst:IsA("BasePart") and inst:GetAttribute("Used") == true then
@@ -168,8 +190,8 @@ local function spawnAtStart()
 
     local baseCF = findFirstPlatform()
                 or CFrame.new(
-                    Vector3.new(0, 13, COURSE_START_Z + 8),
-                    Vector3.new(0, 13, COURSE_START_Z + 9)
+                    Vector3.new(0, 13, getCourseStartZ() + 8),
+                    Vector3.new(0, 13, getCourseStartZ() + 9)
                 )
 
     print(string.format("[RoundManager] Spawn départ : Z=%.1f Y=%.1f", baseCF.Position.Z, baseCF.Position.Y))
@@ -334,12 +356,13 @@ end
 -- DÉTECTION DE L'ARRIVÉE
 -- ============================================================
 
-local arrivalZ = nil  -- Z minimum pour être considéré arrivé (calculé depuis la map)
+-- arrivalZByCourse est déclaré en haut avec les autres variables d'état
 
 -- Logique commune : enregistre l'arrivée d'un joueur
-local function processArrival(player)
+local function processArrival(player, zoneId)
     if not roundActive then return end
     if not activePlayers[player] then return end
+    if (zoneId or 1) ~= getCourseId() then return end  -- mauvaise course, ignoré
     for _, arrived in ipairs(arrivalOrder) do
         if arrived == player then return end  -- déjà compté
     end
@@ -386,32 +409,39 @@ local function setupArrivalZone()
         return
     end
 
-    -- Calcule le Z minimum de toutes les ArrivalZones
-    arrivalZ = math.huge
+    -- Groupe les zones par courseId, calcule le Z minimum par course
     for _, zone in ipairs(zones) do
+        local courseId = zone:GetAttribute("CourseId") or 1
         local zMin = zone.Position.Z - zone.Size.Z / 2
-        if zMin < arrivalZ then arrivalZ = zMin end
+        if not arrivalZByCourse[courseId] or zMin < arrivalZByCourse[courseId] then
+            arrivalZByCourse[courseId] = zMin
+        end
 
-        -- Touched : garde comme déclencheur principal
+        -- Touched : déclencheur principal (filtré par courseId dans processArrival)
         zone.Touched:Connect(function(hit)
             local char   = hit.Parent
             local player = Players:GetPlayerFromCharacter(char)
-            if player then processArrival(player) end
+            if player then processArrival(player, courseId) end
         end)
     end
 
-    print(string.format("[RoundManager] %d ArrivalZone(s) — seuil Z=%.0f", #zones, arrivalZ))
+    print(string.format("[RoundManager] %d ArrivalZone(s) — Course1 Z=%.0f | Course2 Z=%.0f",
+        #zones,
+        arrivalZByCourse[1] or 0,
+        arrivalZByCourse[2] or 0))
 end
 
 -- Vérifie chaque seconde si un joueur a dépassé le seuil Z (fallback fiable)
 local function checkArrivalsByZ()
-    if not arrivalZ or arrivalZ == math.huge then return end
+    local courseId  = getCourseId()
+    local threshold = arrivalZByCourse[courseId]
+    if not threshold then return end
     for player in pairs(activePlayers) do
         local char = player.Character
         if char then
             local root = char:FindFirstChild("HumanoidRootPart")
-            if root and root.Position.Z >= arrivalZ then
-                processArrival(player)
+            if root and root.Position.Z >= threshold then
+                processArrival(player, courseId)
             end
         end
     end
