@@ -208,7 +208,7 @@ local function buildSection(courseFolder, sectionDef, index, startY)
         arm:SetAttribute("PosX",    0)
         arm:SetAttribute("PosY",    armCenterY)
         arm:SetAttribute("PosZ",    armCenterZ)
-        arm:SetAttribute("Speed",   math.rad(35))
+        arm:SetAttribute("Speed",   math.rad(60))
         arm:SetAttribute("SpinDir", 1)
         CollectionService:AddTag(arm, "SpinningDisc")
 
