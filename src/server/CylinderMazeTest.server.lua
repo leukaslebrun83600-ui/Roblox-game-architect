@@ -18,22 +18,26 @@ local ZONE_X  = -800    -- X de la zone (isolée du parcours)
 local ZONE_Z  =    0    -- Z de départ
 local AXIS_Y  =   35    -- hauteur de l'axe du cylindre
 
-local CYL_R   =   15    -- rayon (studs)
-local SEG_D   =   18    -- profondeur Z d'un segment
+local CYL_R   =   30    -- rayon (studs)
+local SEG_D   =   28    -- profondeur Z d'un segment
 local N_SEG   =    5    -- nombre de segments
-local N_FACES =   10    -- faces par segment (polygone)
-local FACE_T  =    1.4  -- épaisseur d'une face
-local OMEGA   =    0.45 -- vitesse angulaire (rad/s)
+local N_FACES =   12    -- faces par segment (polygone)
+local FACE_T  =    1.8  -- épaisseur d'une face
+local OMEGA         =    0.75  -- vitesse angulaire max (rad/s)
+local OMEGA_MIN     =    0.12  -- vitesse au démarrage (lente)
+local OMEGA_ACCEL   =    0.009 -- accélération (rad/s²) → pleine vitesse en ~70s
+local omegaCurrent  =    0     -- vitesse courante (0 = arrêté, contrôlé par RoundManager)
 
--- Faces retirées (trous) par segment — 0-indexed sur N_FACES=10
--- Face 2 ≈ sommet-droite (72°), face 3 ≈ sommet-gauche (108°)
--- → on évite de mettre les trous sur le sommet au départ
+-- Faces retirées (trous) par segment — 0-indexed sur N_FACES=12
+-- Face 3 = sommet exact (90°) — on évite faces 2,3,4 au départ
+-- Face 5 ≈ 150° (gauche-haut), face 11 ≈ 330° (droite-bas)
+-- Face 1 ≈  30° (droite-haut), face 7  ≈ 210° (gauche-bas)
 local HOLES = {
-    { 4, 9 },   -- seg 1 : gauche-bas et droite-bas
-    { 1, 6 },   -- seg 2 : droite-haut et gauche-bas
-    { 4, 9 },   -- seg 3
-    { 1, 6 },   -- seg 4
-    { 4, 9 },   -- seg 5
+    {  5, 11 },  -- seg 1
+    {  1,  7 },  -- seg 2
+    {  5, 11 },  -- seg 3
+    {  1,  7 },  -- seg 4
+    {  5, 11 },  -- seg 5
 }
 
 -- Direction de rotation : sens opposés entre segments adjacents
@@ -126,8 +130,8 @@ for s = 1, N_SEG do
 
     -- ── Murs (fins radiales) — 2 par segment ─────────────────
     -- Placés sur des faces non-trouées, positions alternées entre segments
-    local wallFaceList = (s % 2 == 1) and { 0, 5 } or { 3, 8 }
-    local WALL_H = 9  -- hauteur du mur (studs, radiale)
+    local wallFaceList = (s % 2 == 1) and { 0, 6 } or { 4, 10 }
+    local WALL_H = 13  -- hauteur du mur (studs, radiale)
 
     for _, wf in ipairs(wallFaceList) do
         if not holeSet[wf] then
@@ -148,8 +152,8 @@ for s = 1, N_SEG do
     -- ── PunchCylinder (segments 2 et 4) ──────────────────────
     -- Cylindre jaune pointant radialement vers l'extérieur (même modèle que le dernier piège)
     if s == 2 or s == 4 then
-        local CYL_H   = 9    -- longueur du cylindre
-        local CYL_R_P = 2.8  -- rayon du cylindre (soit diamètre 5.6)
+        local CYL_H   = 12   -- longueur du cylindre
+        local CYL_R_P = 2.0  -- rayon du cylindre (soit diamètre 4)
         local ballFace = 2   -- face 2 = ~72° (proche du sommet côté droit)
         local ba = (ballFace / N_FACES) * math.pi * 2
         -- Centre du cylindre : à CYL_R + CYL_H/2 de l'axe (pointe vers l'extérieur)
@@ -187,22 +191,11 @@ for s = 1, N_SEG do
 end
 
 -- ────────────────────────────────────────────────────────────
--- PLATEFORMES ENTRÉE / SORTIE
+-- DIMENSIONS (utilisées pour le spawn et la kill zone)
 -- ────────────────────────────────────────────────────────────
 local topY  = AXIS_Y + CYL_R           -- hauteur du sommet du cylindre
 local endZ  = ZONE_Z + N_SEG * SEG_D   -- fin de la zone
-
--- Entrée : juste avant le segment 1
-mkPart("PlatEntree",
-    Vector3.new(12, 1.2, 14),
-    CFrame.new(ZONE_X, topY, ZONE_Z - 8),
-    COLOR_PLAT)
-
--- Sortie : juste après le segment 5
-mkPart("PlatSortie",
-    Vector3.new(12, 1.2, 14),
-    CFrame.new(ZONE_X, topY, endZ + 8),
-    COLOR_PLAT)
+-- Plateformes entrée/sortie supprimées — les joueurs arrivent via RoundManager
 
 -- ────────────────────────────────────────────────────────────
 -- ANIMATION — Heartbeat
@@ -212,8 +205,14 @@ mkPart("PlatSortie",
 -- où localCF = position/orientation de la part relative au centre du segment à angle=0.
 
 RunService.Heartbeat:Connect(function(dt)
+    -- ── Accélération progressive ──────────────────────────────
+    if omegaCurrent > 0 and omegaCurrent < OMEGA then
+        omegaCurrent = math.min(OMEGA, omegaCurrent + OMEGA_ACCEL * dt)
+    end
+
+    -- ── Rotation des segments ─────────────────────────────────
     for s, seg in ipairs(segments) do
-        local dAngle = seg.dir * OMEGA * dt
+        local dAngle = seg.dir * omegaCurrent * dt
         segAngles[s] += dAngle
         local rotCF = CFrame.new(seg.center) * CFrame.Angles(0, 0, segAngles[s])
         for _, entry in ipairs(seg.parts) do
@@ -222,23 +221,68 @@ RunService.Heartbeat:Connect(function(dt)
             end
         end
     end
+
+    -- ── Kill zone : intérieur du cylindre ────────────────────
+    -- Un joueur qui tombe dans un trou se retrouve à l'intérieur.
+    -- Si distance à l'axe < CYL_R - 3, il est clairement dedans → mort.
+    local killR2 = (CYL_R - 10) ^ 2
+    for _, player in ipairs(Players:GetPlayers()) do
+        local char = player.Character
+        if not char then continue end
+        local root = char:FindFirstChild("HumanoidRootPart")
+        if not root then continue end
+        local pos = root.Position
+        if pos.Z < ZONE_Z - 2 or pos.Z > endZ + 2 then continue end
+        local dx = pos.X - ZONE_X
+        local dy = pos.Y - AXIS_Y
+        if dx * dx + dy * dy < killR2 then
+            local hum = char:FindFirstChildOfClass("Humanoid")
+            if hum and hum.Health > 0 then
+                hum.Health = 0
+            end
+        end
+    end
 end)
 
 -- ────────────────────────────────────────────────────────────
--- TP (touche T depuis le client)
+-- API PUBLIQUE (_G.CylinderMaze) — utilisée par RoundManager
 -- ────────────────────────────────────────────────────────────
-local spawnCF       = CFrame.new(ZONE_X, topY + 4, ZONE_Z - 8)
-local reTeleport    = game.ReplicatedStorage:WaitForChild("Events")
-                        :WaitForChild("TeleportToTest")
 
-local function tpToTest(player)
-    local char = player.Character
-    if not char then return end
-    local root = char:FindFirstChild("HumanoidRootPart")
-    if root then root.CFrame = spawnCF end
+local function getCylinderSpawnCFrames(n)
+    -- Répartit n joueurs sur le dessus du cylindre, étalement Z sur tous les segments
+    local spawns = {}
+    local totalZ = N_SEG * SEG_D
+    for i = 1, n do
+        local t  = (i - 0.5) / n
+        local sz = ZONE_Z + t * totalZ
+        -- X légèrement décalé en alternance pour éviter la superposition
+        local sx = ZONE_X + (((i - 1) % 3) - 1) * 4
+        local sy = AXIS_Y + CYL_R + 4  -- 4 studs au-dessus du sommet
+        table.insert(spawns, CFrame.new(sx, sy, sz))
+    end
+    return spawns
 end
 
-reTeleport.OnServerEvent:Connect(tpToTest)
+_G.CylinderMaze = {
+    Start = function()
+        omegaCurrent = OMEGA_MIN   -- démarre lentement, accélère via Heartbeat
+        print("[CylinderMaze] ▶ Rotation démarrée (accélération progressive)")
+    end,
+    Stop = function()
+        omegaCurrent = 0
+        print("[CylinderMaze] ⏹ Rotation arrêtée")
+    end,
+    GetSpawnCFrames = function(n)
+        return getCylinderSpawnCFrames(n)
+    end,
+    IsRunning = function()
+        return omegaCurrent ~= 0
+    end,
+    TopY  = AXIS_Y + CYL_R,
+    ZoneX = ZONE_X,
+    ZoneZ = ZONE_Z,
+    EndZ  = ZONE_Z + N_SEG * SEG_D,
+}
 
 -- ────────────────────────────────────────────────────────────
 print("[CylinderMazeTest] ✅ Cylindre 5 segments prêt")

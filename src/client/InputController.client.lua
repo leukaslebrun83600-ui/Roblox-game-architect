@@ -14,8 +14,7 @@ local reqActivateTrap  = Events:WaitForChild("RequestActivateTrap")
 local reqSacrifice     = Events:WaitForChild("RequestSacrifice")
 local reButtonUsed     = Events:WaitForChild("ButtonUsed")
 local reRoundState     = Events:WaitForChild("RoundStateChanged")
-local reTeleportTest     = Events:WaitForChild("TeleportToTest")
-local reTeleportWallGate = Events:WaitForChild("TeleportToWallGate")
+local reTeleportFinish    = Events:WaitForChild("TeleportToFinish")
 
 -- ============================================================
 -- CRÉATION DES PROXIMITYPROMPTS
@@ -139,18 +138,16 @@ end)
 -- ============================================================
 
 -- ============================================================
--- TOUCHE T — TP vers la zone de test (CylinderMazeTest)
+-- TOUCHE Y — TP vers la fin du Parcours 1 (debug)
 -- ============================================================
 
 UserInputService.InputBegan:Connect(function(input, gameProcessed)
     if gameProcessed then return end
-    if input.KeyCode == Enum.KeyCode.T then
-        reTeleportTest:FireServer()
-    elseif input.KeyCode == Enum.KeyCode.Y then
-        reTeleportWallGate:FireServer()
+    if input.KeyCode == Enum.KeyCode.Y then
+        reTeleportFinish:FireServer()
     end
 end)
 
 scanButtons()
 
-print("[InputController] ✅ Prêt  |  [T] = Cylindre  |  [Y] = Murs-portes")
+print("[InputController] ✅ Prêt  |  [Y] = Fin Parcours 1")

@@ -32,8 +32,18 @@ local roundNumber       = 0    -- numéro de la manche dans le tournoi en cours
 local COURSE_START_Z_BY_COURSE = { [1] = 200, [2] = 5000 }
 -- Mapping manche → identifiant de course
 local ROUND_COURSE = { [1] = 1, [2] = 2 }
+-- Type de round : "course" (parcours linéaire) ou "cylinder" (survie cylindre)
+local ROUND_TYPE   = { [1] = "course", [2] = "cylinder" }
+
+local currentRoundType = "course"   -- mis à jour au début de chaque manche
+local endCylinderRound              -- forward declaration (défini plus bas)
 
 local arrivalZByCourse = {}  -- [courseId] = Z minimum de l'ArrivalZone (calculé au démarrage)
+
+-- Fallback hardcodé si aucune ArrivalZone n'est taguée dans le workspace
+-- Course 1 : section 12 zStart=1520, plateforme Z 1528→1563, seuil au milieu
+-- Course 2 : section 12 zStart=5320 (COURSE_START_Z=5000 + 11×120 = 6320 → à ajuster si besoin)
+local ARRIVAL_Z_HARDCODE = { [1] = 1540, [2] = 5625 }
 
 -- ============================================================
 -- API PUBLIQUE
@@ -90,7 +100,11 @@ function RoundManager.EliminatePlayer(player)
     local remaining = 0
     for _ in pairs(activePlayers) do remaining += 1 end
     if remaining == 0 then
-        endRound(arrivalOrder[1])
+        if currentRoundType == "cylinder" then
+            if endCylinderRound then endCylinderRound() end
+        else
+            endRound(arrivalOrder[1])
+        end
     end
 end
 
@@ -217,6 +231,38 @@ local function spawnAtStart()
             end
         end
     end
+end
+
+local function spawnOnCylinder()
+    local cylAPI = _G.CylinderMaze
+    if not cylAPI then
+        warn("[RoundManager] _G.CylinderMaze introuvable — spawn cylindre impossible")
+        return
+    end
+
+    local playerList = {}
+    for p in pairs(tournamentPlayers) do
+        if p.Parent then table.insert(playerList, p) end
+    end
+
+    activePlayers = {}
+    local spawns  = cylAPI.GetSpawnCFrames(#playerList)
+    for i, player in ipairs(playerList) do
+        activePlayers[player] = true
+        local char = player.Character
+        if char then
+            local root = char:FindFirstChild("HumanoidRootPart")
+            if root then
+                local cf = spawns[i]
+                if cf then
+                    root.CFrame = cf
+                else
+                    root.CFrame = CFrame.new(cylAPI.ZoneX, cylAPI.TopY + 4, cylAPI.ZoneZ + i * 6)
+                end
+            end
+        end
+    end
+    print(string.format("[RoundManager] 🎡 %d joueur(s) spawné(s) sur le cylindre", #playerList))
 end
 
 local function returnToLobby()
@@ -354,6 +400,42 @@ local function endRound(winner)
 end
 
 -- ============================================================
+-- FIN DE MANCHE CYLINDRE
+-- ============================================================
+
+endCylinderRound = function()
+    if not roundActive then return end
+    roundActive = false
+
+    -- Arrêter la rotation
+    if _G.CylinderMaze then _G.CylinderMaze.Stop() end
+
+    -- Stats pour les participants encore dans le tournoi
+    for p in pairs(tournamentPlayers) do
+        if p.Parent and _G.DataManager then
+            local data = _G.DataManager.GetData(p)
+            if data then data.stats.roundsPlayed += 1 end
+        end
+        if _G.BadgeManager then
+            task.spawn(function() _G.BadgeManager.CheckBadges(p) end)
+        end
+    end
+
+    local survivorCount = 0
+    for _ in pairs(activePlayers) do survivorCount += 1 end
+
+    local roundLabel = (GameConfig.Tournament.ROUNDS[roundNumber] or {}).label or "Cylindre"
+    print(string.format("[RoundManager] 🎡 Cylindre terminé — %d survivant(s)", survivorCount))
+
+    setState("RESULTS", {
+        rankings  = {},
+        round     = roundNumber,
+        qualified = survivorCount,
+        label     = roundLabel,
+    })
+end
+
+-- ============================================================
 -- DÉTECTION DE L'ARRIVÉE
 -- ============================================================
 
@@ -413,6 +495,11 @@ local function setupArrivalZone()
     -- Groupe les zones par courseId, calcule le Z minimum par course
     for _, zone in ipairs(zones) do
         local courseId = zone:GetAttribute("CourseId") or 1
+
+        -- S'assurer que la zone peut déclencher des événements Touched
+        zone.CanTouch = true
+
+        -- Seuil Z = bord avant de la zone (le joueur entre par le côté -Z)
         local zMin = zone.Position.Z - zone.Size.Z / 2
         if not arrivalZByCourse[courseId] or zMin < arrivalZByCourse[courseId] then
             arrivalZByCourse[courseId] = zMin
@@ -435,7 +522,7 @@ end
 -- Vérifie chaque seconde si un joueur a dépassé le seuil Z (fallback fiable)
 local function checkArrivalsByZ()
     local courseId  = getCourseId()
-    local threshold = arrivalZByCourse[courseId]
+    local threshold = arrivalZByCourse[courseId] or ARRIVAL_Z_HARDCODE[courseId]
     if not threshold then return end
     for player in pairs(activePlayers) do
         local char = player.Character
@@ -464,10 +551,140 @@ local function broadcastPositions()
 end
 
 -- ============================================================
+-- BOUCLE DE MANCHE CYLINDRE (survie 60s)
+-- ============================================================
+
+local function runCylinderRound()
+    arrivalOrder = {}
+
+    -- ── WAITING (décompte lobby) ──────────────────────────────
+    local roundDef   = GameConfig.Tournament.ROUNDS[roundNumber] or GameConfig.Tournament.ROUNDS[#GameConfig.Tournament.ROUNDS]
+    local roundLabel = roundDef.label
+    setState("WAITING", { countdown = GameConfig.Round.WAITING_COUNTDOWN, round = roundNumber, label = roundLabel })
+
+    for i = GameConfig.Round.WAITING_COUNTDOWN, 1, -1 do
+        task.wait(1)
+        reRoundState:FireAllClients({
+            state = "WAITING",
+            data  = { countdown = i, round = roundNumber, label = roundLabel },
+        })
+    end
+
+    if _G.KarmaManager  then _G.KarmaManager.ResetRoundTracking() end
+    if _G.ChallengeManager then
+        for _, p in ipairs(Players:GetPlayers()) do
+            _G.ChallengeManager.ResetRoundProgress(p)
+        end
+    end
+
+    -- Arrêt préventif du cylindre + spawn des joueurs
+    if _G.CylinderMaze then _G.CylinderMaze.Stop() end
+    spawnOnCylinder()
+    task.wait(0.5)
+
+    -- Activer le round (EliminatePlayer fonctionnel dès maintenant)
+    roundActive = true
+
+    -- Connexions Humanoid.Died → élimination immédiate
+    local deathConnections = {}
+    for player in pairs(activePlayers) do
+        local char = player.Character
+        if char then
+            local hum = char:FindFirstChildOfClass("Humanoid")
+            if hum then
+                local conn
+                conn = hum.Died:Connect(function()
+                    conn:Disconnect()
+                    RoundManager.EliminatePlayer(player)
+                end)
+                table.insert(deathConnections, conn)
+            end
+        end
+    end
+
+    -- ── DÉCOMPTE PRÉ-ROTATION (10s) ──────────────────────────
+    for i = 10, 1, -1 do
+        if not roundActive then break end   -- arrêt anticipé si tout le monde éliminé
+        reRoundState:FireAllClients({
+            state = "WAITING",
+            data  = { countdown = i, round = roundNumber, label = "Prêt à survivre !" },
+        })
+        task.wait(1)
+    end
+
+    -- ── ACTIVE — cylindre tourne pendant 60s ──────────────────
+    if roundActive then
+        if _G.CylinderMaze then _G.CylinderMaze.Start() end
+
+        local CYLINDER_DURATION = 60
+        setState("ACTIVE", { duration = CYLINDER_DURATION, round = roundNumber })
+
+        task.spawn(function()
+            local elapsed = 0
+            while roundActive and elapsed < CYLINDER_DURATION do
+                task.wait(1)
+                elapsed += 1
+                reRoundState:FireAllClients({
+                    state = "ACTIVE",
+                    data  = {
+                        timeLeft = CYLINDER_DURATION - elapsed,
+                        elapsed  = elapsed,
+                        round    = roundNumber,
+                    },
+                })
+            end
+            if roundActive then endCylinderRound() end
+        end)
+
+        repeat task.wait(0.5) until not roundActive
+    end
+
+    -- Nettoyage connexions mort
+    for _, conn in ipairs(deathConnections) do
+        pcall(function() conn:Disconnect() end)
+    end
+
+    -- Sécurité : arrêter le cylindre si pas encore fait
+    if _G.CylinderMaze then _G.CylinderMaze.Stop() end
+
+    -- ── RESULTS ───────────────────────────────────────────────
+    task.wait(GameConfig.Round.RESULTS_DURATION)
+
+    -- TP survivants au lobby
+    local lobby       = workspace:FindFirstChild("Lobby")
+    local spawnFolder = lobby and lobby:FindFirstChild("SpawnLocations")
+    local spawnList   = spawnFolder and spawnFolder:GetChildren() or {}
+    local si = 0
+    for p in pairs(activePlayers) do
+        local char = p.Character
+        if char then
+            local root = char:FindFirstChild("HumanoidRootPart")
+            if root then
+                si += 1
+                local sp = spawnList[((si - 1) % math.max(#spawnList, 1)) + 1]
+                root.CFrame = sp and (sp.CFrame + Vector3.new(0, 3, 0))
+                                 or CFrame.new(math.random(-20, 20), 12, math.random(-20, 20))
+            end
+        end
+    end
+
+    teleportEliminated()
+    activePlayers = {}
+    arrivalOrder  = {}
+end
+
+-- ============================================================
 -- BOUCLE DE MANCHE
 -- ============================================================
 
 local function runRound()
+    -- Branchement selon le type de manche
+    currentRoundType = ROUND_TYPE[roundNumber] or "course"
+    if currentRoundType == "cylinder" then
+        runCylinderRound()
+        return
+    end
+
     arrivalOrder = {}
 
     -- ── WAITING ──────────────────────────────────────────────
@@ -511,6 +728,7 @@ local function runRound()
                     round    = roundNumber,
                 },
             })
+            checkArrivalsByZ()
             if elapsed % 3 == 0 then broadcastPositions() end
         end
         if roundActive then endRound(nil) end
