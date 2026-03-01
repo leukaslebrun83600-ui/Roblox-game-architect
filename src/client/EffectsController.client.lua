@@ -418,9 +418,30 @@ reSacrifice.OnClientEvent:Connect(function(payload)
     end
 end)
 
--- Son de respawn (E9-S2)
-reRespawn.OnClientEvent:Connect(function()
+-- Son + caméra au respawn (E9-S2)
+reRespawn.OnClientEvent:Connect(function(payload)
     playSFX("respawn")
+
+    -- Réorienter la caméra vers la ligne d'arrivée (+Z)
+    task.wait(0.1)  -- laisse le serveur appliquer root.CFrame
+    local char = localPlayer.Character
+    if not char then return end
+    local root = char:FindFirstChild("HumanoidRootPart")
+    if not root then return end
+
+    local camera = workspace.CurrentCamera
+    local lookDir = (type(payload) == "table" and payload.checkpointCFrame)
+        and payload.checkpointCFrame.LookVector
+        or root.CFrame.LookVector  -- fallback : direction actuelle du perso
+
+    local charPos = root.Position
+    camera.CameraType = Enum.CameraType.Scriptable
+    camera.CFrame = CFrame.new(
+        charPos - lookDir * 16 + Vector3.new(0, 8, 0),
+        charPos + lookDir * 5
+    )
+    task.wait(0.05)
+    camera.CameraType = Enum.CameraType.Custom
 end)
 
 -- Effets génériques : bouclier, fin bouclier (E8-S5)
