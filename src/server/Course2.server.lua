@@ -1,5 +1,5 @@
--- CylinderMazeTest.server.lua
--- Zone de test : Grand cylindre rotatif à 5 segments
+-- Course2.server.lua
+-- Parcours 2 : Grand cylindre rotatif à 5 segments
 -- Chaque segment adjacent tourne dans le sens opposé.
 -- Trous pour tomber, murs-obstacles, punching balls qui repoussent.
 --
@@ -51,16 +51,20 @@ local SEG_COLORS = {
     Color3.fromRGB( 60, 190, 110),  -- vert
     Color3.fromRGB(190,  70, 210),  -- violet
 }
-local COLOR_WALL = Color3.fromRGB( 50,  55,  75)
-local COLOR_BALL = Color3.fromRGB(255, 200,  50)
-local COLOR_PLAT = Color3.fromRGB(255, 213,  79)
-local COLOR_HOLE = Color3.fromRGB( 15,  15,  15)
+local COLOR_WALL  = Color3.fromRGB( 50,  55,  75)
+local COLOR_BALL  = Color3.fromRGB(255, 200,  50)
+local COLOR_PLAT  = Color3.fromRGB(255, 213,  79)
+local COLOR_HOLE  = Color3.fromRGB( 15,  15,  15)
 
 -- ────────────────────────────────────────────────────────────
 -- UTILITAIRES
 -- ────────────────────────────────────────────────────────────
+-- Supprime tout ancien dossier Course2 (doublon d'une session précédente)
+local _old = game.Workspace:FindFirstChild("Course2")
+if _old then _old:Destroy() end
+
 local testFolder = Instance.new("Folder")
-testFolder.Name   = "CylinderMazeTest"
+testFolder.Name   = "Course2"
 testFolder.Parent = game.Workspace
 
 local function mkPart(name, size, cf, color, canCollide, transp)
@@ -285,7 +289,7 @@ _G.CylinderMaze = {
 }
 
 -- ────────────────────────────────────────────────────────────
-print("[CylinderMazeTest] ✅ Cylindre 5 segments prêt")
+print("[Course2] ✅ Cylindre 5 segments prêt")
 print(string.format("  Rayon: %d studs | %d segments | %.2f rad/s", CYL_R, N_SEG, OMEGA))
 print(string.format("  Sommet Y=%.0f | Z=%d → %d", topY, ZONE_Z, endZ))
 print("  Segments : rouge→bleu→or→vert→violet")

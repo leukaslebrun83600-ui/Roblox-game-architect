@@ -27,7 +27,7 @@
       "PunchManager":       { "$path": "src/server/PunchManager.server.lua" },
       "FadeManager":        { "$path": "src/server/FadeManager.server.lua" },
       "SpikeManager":       { "$path": "src/server/SpikeManager.server.lua" },
-      "CylinderMazeTest":   { "$path": "src/server/CylinderMazeTest.server.lua" },
+      "Course2":            { "$path": "src/server/Course2.server.lua" },
       "FinishLineTest":     { "$path": "src/server/FinishLineTest.server.lua" }
     },
 
