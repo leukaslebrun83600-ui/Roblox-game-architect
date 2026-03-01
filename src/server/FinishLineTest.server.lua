@@ -1,18 +1,13 @@
 -- FinishLineTest.server.lua
--- TP debug vers la fin du Parcours 1 (avant la ligne d'arrivée)
+-- TP debug vers la plateforme de départ du Parcours 3 (Finale Étoile)
 -- Touche Y (client) → FireServer → TP ici
---
--- Section 12 (hasFinalZone) : zStart = 200 + 11*120 = 1520
--- PlateformeArrivee : Z ≈ 1528→1563, surface Y ≈ 49-50 (estimé d'après les sections précédentes)
--- On spawn légèrement en hauteur pour atterrir proprement.
 
 local Players = game:GetService("Players")
 
 -- ── Position spawn ──────────────────────────────────────────
--- Z = 1530 : début de la plateforme d'arrivée, avant la ligne
--- Y = 65   : assez haut pour tomber sur la plateforme sans la traverser
--- X = 0    : centre du parcours
-local FINISH_SPAWN = CFrame.new(0, 65, 1530)
+-- Course3 : START_Z=10000, PLAT_D=40 → plateforme Z=9960→10000
+-- On spawn au milieu de la plateforme, 3 studs au-dessus
+local FINISH_SPAWN = CFrame.new(0, 16, 9975)
 
 -- ── RemoteEvent ─────────────────────────────────────────────
 local reTeleport = game.ReplicatedStorage:WaitForChild("Events")
@@ -25,4 +20,4 @@ reTeleport.OnServerEvent:Connect(function(player)
     if root then root.CFrame = FINISH_SPAWN end
 end)
 
-print("[FinishLineTest] ✅ Prêt  |  [Y] = TP fin Parcours 1  (Z=1530, Y=65)")
+print("[FinishLineTest] ✅ Prêt  |  [Y] = TP Parcours 3 / Finale Étoile  (Z=9975, Y=16)")

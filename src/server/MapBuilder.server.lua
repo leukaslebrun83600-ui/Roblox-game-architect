@@ -931,6 +931,17 @@ local function buildSection(courseFolder, sectionDef, index, startY, courseStart
         return exitSurfY  -- le Chateau commence à cette hauteur
     end
 
+    -- ── Plateforme de spawn (section 1 uniquement) ───────────
+    -- Grande plateforme placée AVANT Plat_A pour accueillir ~30 joueurs.
+    -- 70 studs de large × 50 studs de profondeur, centre à Z = zStart - 35.
+    -- Gap de 6 studs vers Plat_A (zStart+8) → jumpable.
+    if index == 1 then
+        part(platFolder, "Plat_Spawn",
+            Vector3.new(70, 1.2, 50),
+            CFrame.new(0, yBase, zStart - 28),
+            sectionDef.color)
+    end
+
     -- ── Plateformes (5 par section) ──────────────────────────
     -- Gaps de 6-8 studs entre plateformes (jumpable avec JumpPower=60)
     local yRise = sectionDef.yBias ~= 0 and (sectionDef.yBias * 0.08) or 0

@@ -29,14 +29,15 @@ local tournamentPlayers = {}   -- [player] = true  (encore dans le tournoi)
 local roundNumber       = 0    -- numéro de la manche dans le tournoi en cours
 
 -- Z de départ par identifiant de course (doit correspondre aux constantes MapBuilder)
-local COURSE_START_Z_BY_COURSE = { [1] = 200, [2] = 5000 }
+local COURSE_START_Z_BY_COURSE = { [1] = 200, [2] = 5000, [3] = 10000 }
 -- Mapping manche → identifiant de course
-local ROUND_COURSE = { [1] = 1, [2] = 2 }
--- Type de round : "course" (parcours linéaire) ou "cylinder" (survie cylindre)
-local ROUND_TYPE   = { [1] = "course", [2] = "cylinder" }
+local ROUND_COURSE = { [1] = 1, [2] = 2, [3] = 3 }
+-- Type de round : "course" (linéaire), "cylinder" (survie), "star" (finale étoile)
+local ROUND_TYPE   = { [1] = "course", [2] = "cylinder", [3] = "star" }
 
 local currentRoundType = "course"   -- mis à jour au début de chaque manche
 local endCylinderRound              -- forward declaration (défini plus bas)
+local endStarRound                  -- forward declaration (défini plus bas)
 
 local arrivalZByCourse = {}  -- [courseId] = Z minimum de l'ArrivalZone (calculé au démarrage)
 
@@ -102,6 +103,8 @@ function RoundManager.EliminatePlayer(player)
     if remaining == 0 then
         if currentRoundType == "cylinder" then
             if endCylinderRound then endCylinderRound() end
+        elseif currentRoundType == "star" then
+            if endStarRound then endStarRound() end
         else
             endRound(arrivalOrder[1])
         end
@@ -168,10 +171,13 @@ local function findFirstPlatform()
     for _, sec in ipairs(course:GetChildren()) do
         local platFolder = sec:FindFirstChild("Plateformes")
         if platFolder then
-            local platA = platFolder:FindFirstChild("Plat_A")
-            if platA and platA.Position.Z < bestZ then
-                bestZ    = platA.Position.Z
-                bestPlat = platA
+            -- Priorité à Plat_Spawn (grande plateforme de départ) sinon Plat_A
+            for _, name in ipairs({ "Plat_Spawn", "Plat_A" }) do
+                local p = platFolder:FindFirstChild(name)
+                if p and p.Position.Z < bestZ then
+                    bestZ    = p.Position.Z
+                    bestPlat = p
+                end
             end
         end
     end
@@ -674,6 +680,159 @@ local function runCylinderRound()
 end
 
 -- ============================================================
+-- SPAWN SUR COURSE 3
+-- ============================================================
+
+local function spawnOnCourse3()
+    local api = _G.Course3
+    if not api then
+        warn("[RoundManager] _G.Course3 introuvable — spawn Course3 impossible")
+        return
+    end
+
+    local playerList = {}
+    for p in pairs(tournamentPlayers) do
+        if p.Parent then table.insert(playerList, p) end
+    end
+
+    activePlayers = {}
+    local spawns  = api.GetSpawnCFrames(#playerList)
+    for i, player in ipairs(playerList) do
+        activePlayers[player] = true
+        local char = player.Character
+        if char then
+            local root = char:FindFirstChild("HumanoidRootPart")
+            if root and spawns[i] then
+                root.CFrame = spawns[i]
+            end
+        end
+    end
+    print(string.format("[RoundManager] ⭐ %d joueur(s) spawné(s) sur Course3", #playerList))
+end
+
+-- ============================================================
+-- BOUCLE DE MANCHE ÉTOILE (finale)
+-- ============================================================
+
+local function runStarRound()
+    arrivalOrder = {}
+
+    -- ── WAITING ──────────────────────────────────────────────
+    local roundDef   = GameConfig.Tournament.ROUNDS[roundNumber] or GameConfig.Tournament.ROUNDS[#GameConfig.Tournament.ROUNDS]
+    local roundLabel = roundDef.label
+    setState("WAITING", { countdown = GameConfig.Round.WAITING_COUNTDOWN, round = roundNumber, label = roundLabel })
+
+    for i = GameConfig.Round.WAITING_COUNTDOWN, 1, -1 do
+        task.wait(1)
+        reRoundState:FireAllClients({
+            state = "WAITING",
+            data  = { countdown = i, round = roundNumber, label = roundLabel },
+        })
+    end
+
+    if _G.Course3 then _G.Course3.StopRound() end
+    spawnOnCourse3()
+    task.wait(0.5)
+
+    roundActive = true
+
+    -- Callback : premier à toucher l'étoile
+    local starWinner = nil
+    if _G.Course3 then
+        _G.Course3.OnStarTouched = function(player)
+            if not roundActive then return end
+            starWinner = player
+            -- Éliminer tous les autres du tournoi
+            for p in pairs(activePlayers) do
+                if p ~= player then tournamentPlayers[p] = nil end
+            end
+            activePlayers = { [player] = true }
+            roundActive   = false
+        end
+        _G.Course3.StartRound()
+    end
+
+    -- ── ACTIVE ───────────────────────────────────────────────
+    local STAR_DURATION = 180
+    setState("ACTIVE", { duration = STAR_DURATION, round = roundNumber })
+
+    local elapsed = 0
+    while roundActive and elapsed < STAR_DURATION do
+        task.wait(1)
+        elapsed += 1
+        reRoundState:FireAllClients({
+            state = "ACTIVE",
+            data  = {
+                timeLeft = STAR_DURATION - elapsed,
+                elapsed  = elapsed,
+                round    = roundNumber,
+            },
+        })
+    end
+
+    if _G.Course3 then _G.Course3.StopRound() end
+    roundActive = false
+
+    -- ── RESULTS ──────────────────────────────────────────────
+    if starWinner then
+        print(string.format("[RoundManager] 🏆 Grand Vainqueur : %s", starWinner.Name))
+        if _G.DataManager then
+            local data = _G.DataManager.GetData(starWinner)
+            if data then
+                data.stats.roundsPlayed += 1
+                data.stats.roundsWon    += 1
+                if _G.KarmaManager    then _G.KarmaManager.AwardVictoryBonus(starWinner) end
+                if _G.ChallengeManager then _G.ChallengeManager.UpdateProgress(starWinner, "win", 1) end
+            end
+        end
+        if _G.BadgeManager then
+            task.spawn(function() _G.BadgeManager.CheckBadges(starWinner) end)
+        end
+    end
+
+    local roundLabel2 = (GameConfig.Tournament.ROUNDS[roundNumber] or {}).label or "Finale"
+    setState("RESULTS", {
+        rankings  = starWinner
+            and { { name = starWinner.Name, rank = 1, cause = "star", qualified = true } }
+            or  {},
+        round     = roundNumber,
+        qualified = starWinner and 1 or 0,
+        label     = roundLabel2,
+    })
+
+    task.wait(GameConfig.Round.RESULTS_DURATION)
+
+    -- TP au lobby
+    local lobby       = workspace:FindFirstChild("Lobby")
+    local spawnFolder = lobby and lobby:FindFirstChild("SpawnLocations")
+    local spawnList   = spawnFolder and spawnFolder:GetChildren() or {}
+    local si = 0
+    for p in pairs(activePlayers) do
+        local char = p.Character
+        if char then
+            local root = char:FindFirstChild("HumanoidRootPart")
+            if root then
+                si += 1
+                local sp = spawnList[((si - 1) % math.max(#spawnList, 1)) + 1]
+                root.CFrame = sp and (sp.CFrame + Vector3.new(0, 3, 0))
+                                 or CFrame.new(math.random(-20, 20), 12, math.random(-20, 20))
+            end
+        end
+    end
+
+    teleportEliminated()
+    activePlayers = {}
+    arrivalOrder  = {}
+end
+
+endStarRound = function()
+    if not roundActive then return end
+    roundActive = false
+    if _G.Course3 then _G.Course3.StopRound() end
+    print("[RoundManager] ⭐ Finale terminée sans vainqueur (tous éliminés)")
+end
+
+-- ============================================================
 -- BOUCLE DE MANCHE
 -- ============================================================
 
@@ -682,6 +841,9 @@ local function runRound()
     currentRoundType = ROUND_TYPE[roundNumber] or "course"
     if currentRoundType == "cylinder" then
         runCylinderRound()
+        return
+    elseif currentRoundType == "star" then
+        runStarRound()
         return
     end
 

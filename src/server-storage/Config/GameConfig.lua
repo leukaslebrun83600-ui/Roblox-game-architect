@@ -102,11 +102,9 @@ GameConfig.Tournament = {
     -- qualify = nombre de joueurs qui passent à la manche suivante
     -- label   = affiché dans l'UI (type de manche)
     ROUNDS = {
-        { qualify = 30, label = "Course Simple"         },  -- Manche 1 : 40 → 30
-        { qualify = 18, label = "Course à Obstacles"    },  -- Manche 2 : 30 → 18
-        { qualify = 10, label = "Survie"                },  -- Manche 3 : 18 → 10
-        { qualify = 6,  label = "Demi-Finale"           },  -- Manche 4 : 10 → 6
-        { qualify = 1,  label = "FINALE"                },  -- Manche 5 :  6 → 1 champion
+        { qualify = 10, label = "Parcours 1"    },  -- Manche 1 : N joueurs → 10
+        { qualify = 10, label = "Cylindre"      },  -- Manche 2 : 10 survivent au cylindre
+        { qualify = 1,  label = "FINALE Étoile" },  -- Manche 3 : 10 → 1 Grand Vainqueur
     },
 }
 

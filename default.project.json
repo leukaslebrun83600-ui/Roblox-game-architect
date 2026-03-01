@@ -28,6 +28,7 @@
       "FadeManager":        { "$path": "src/server/FadeManager.server.lua" },
       "SpikeManager":       { "$path": "src/server/SpikeManager.server.lua" },
       "Course2":            { "$path": "src/server/Course2.server.lua" },
+      "Course3":            { "$path": "src/server/Course3.server.lua" },
       "FinishLineTest":     { "$path": "src/server/FinishLineTest.server.lua" }
     },
 
