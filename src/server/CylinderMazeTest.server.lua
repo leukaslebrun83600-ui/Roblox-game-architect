@@ -14,8 +14,8 @@ local Debris     = game:GetService("Debris")
 -- ────────────────────────────────────────────────────────────
 -- CONFIG
 -- ────────────────────────────────────────────────────────────
-local ZONE_X  = -800    -- X de la zone (isolée du parcours)
-local ZONE_Z  =    0    -- Z de départ
+local ZONE_X  =    0    -- X de la zone (centre du parcours, aligné avec Course 1)
+local ZONE_Z  = 5000    -- Z de départ (Parcours 2, après Course 1 qui finit ~Z=1563)
 local AXIS_Y  =   35    -- hauteur de l'axe du cylindre
 
 local CYL_R   =   30    -- rayon (studs)
