@@ -21,23 +21,23 @@ local AXIS_Y  =   35    -- hauteur de l'axe du cylindre
 local CYL_R   =   30    -- rayon (studs)
 local SEG_D   =   28    -- profondeur Z d'un segment
 local N_SEG   =    5    -- nombre de segments
-local N_FACES =   12    -- faces par segment (polygone)
+local N_FACES =   16    -- faces par segment (polygone) — 16 = trous ~11.7 studs (vs 15.5 avec 12)
 local FACE_T  =    1.8  -- épaisseur d'une face
 local OMEGA         =    0.75  -- vitesse angulaire max (rad/s)
 local OMEGA_MIN     =    0.12  -- vitesse au démarrage (lente)
 local OMEGA_ACCEL   =    0.009 -- accélération (rad/s²) → pleine vitesse en ~70s
 local omegaCurrent  =    0     -- vitesse courante (0 = arrêté, contrôlé par RoundManager)
 
--- Faces retirées (trous) par segment — 0-indexed sur N_FACES=12
--- Face 3 = sommet exact (90°) — on évite faces 2,3,4 au départ
--- Face 5 ≈ 150° (gauche-haut), face 11 ≈ 330° (droite-bas)
--- Face 1 ≈  30° (droite-haut), face 7  ≈ 210° (gauche-bas)
+-- Faces retirées (trous) par segment — 0-indexed sur N_FACES=16 (22.5° par face)
+-- Face 4 = sommet exact (90°) — on évite faces 3,4,5 au départ
+-- Face 7 ≈ 157.5° (gauche-haut), face 15 ≈ 337.5° (droite-bas)
+-- Face 1 ≈  22.5° (droite-haut), face  9 ≈ 202.5° (gauche-bas)
 local HOLES = {
-    {  5, 11 },  -- seg 1
-    {  1,  7 },  -- seg 2
-    {  5, 11 },  -- seg 3
-    {  1,  7 },  -- seg 4
-    {  5, 11 },  -- seg 5
+    {  7, 15 },  -- seg 1
+    {  1,  9 },  -- seg 2
+    {  7, 15 },  -- seg 3
+    {  1,  9 },  -- seg 4
+    {  7, 15 },  -- seg 5
 }
 
 -- Direction de rotation : sens opposés entre segments adjacents
@@ -130,7 +130,7 @@ for s = 1, N_SEG do
 
     -- ── Murs (fins radiales) — 2 par segment ─────────────────
     -- Placés sur des faces non-trouées, positions alternées entre segments
-    local wallFaceList = (s % 2 == 1) and { 0, 6 } or { 4, 10 }
+    local wallFaceList = (s % 2 == 1) and { 0, 8 } or { 5, 13 }
     local WALL_H = 13  -- hauteur du mur (studs, radiale)
 
     for _, wf in ipairs(wallFaceList) do
