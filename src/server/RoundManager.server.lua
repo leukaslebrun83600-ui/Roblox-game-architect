@@ -711,92 +711,131 @@ local function spawnOnCourse3()
 end
 
 -- ============================================================
--- BOUCLE DE MANCHE ÉTOILE (finale)
+-- BOUCLE DE MANCHE HEX-A-GONE (plateformes disparaissantes)
+-- Les joueurs spawnen sur des plateformes individuelles (Y=90).
+-- Décompte 10s → les plateformes tombent → la manche commence.
+-- Les tuiles disparaissent au contact. Dernier survivant = vainqueur.
 -- ============================================================
 
 local function runStarRound()
     arrivalOrder = {}
 
-    -- ── WAITING ──────────────────────────────────────────────
+    -- ── Spawn sur les plateformes individuelles ───────────────
     local roundDef   = GameConfig.Tournament.ROUNDS[roundNumber] or GameConfig.Tournament.ROUNDS[#GameConfig.Tournament.ROUNDS]
     local roundLabel = roundDef.label
-    setState("WAITING", { countdown = GameConfig.Round.WAITING_COUNTDOWN, round = roundNumber, label = roundLabel })
 
-    for i = GameConfig.Round.WAITING_COUNTDOWN, 1, -1 do
+    spawnOnCourse3()   -- place les joueurs sur les spawn platforms
+    task.wait(0.3)
+
+    -- ── WAITING — 10 secondes avant le lancement ─────────────
+    setState("WAITING", { countdown = 10, round = roundNumber, label = roundLabel })
+
+    for i = 10, 1, -1 do
         task.wait(1)
         reRoundState:FireAllClients({
             state = "WAITING",
-            data  = { countdown = i, round = roundNumber, label = roundLabel },
+            data  = { countdown = i, round = roundNumber, label = "Tenez-vous prêts !" },
         })
     end
 
-    if _G.Course3 then _G.Course3.StopRound() end
-    spawnOnCourse3()
-    task.wait(0.5)
+    -- ── LANCEMENT : les plateformes de départ tombent ─────────
+    if _G.Course3 then _G.Course3.LaunchSpawnPlatforms() end
+    task.wait(0.3)
 
     roundActive = true
 
-    -- Callback : premier à toucher l'étoile
-    local starWinner = nil
-    if _G.Course3 then
-        _G.Course3.OnStarTouched = function(player)
-            if not roundActive then return end
-            starWinner = player
-            -- Éliminer tous les autres du tournoi
-            for p in pairs(activePlayers) do
-                if p ~= player then tournamentPlayers[p] = nil end
-            end
-            activePlayers = { [player] = true }
-            roundActive   = false
-        end
-        _G.Course3.StartRound()
-    end
+    local killY     = (_G.Course3 and _G.Course3.KILL_Y) or -25
+    local fallOrder = {}   -- ordre d'élimination (fallOrder[1] = premier éliminé)
 
-    -- ── ACTIVE ───────────────────────────────────────────────
-    local STAR_DURATION = 180
-    setState("ACTIVE", { duration = STAR_DURATION, round = roundNumber })
+    -- ── ACTIVE ────────────────────────────────────────────────
+    local MAX_DURATION = 300   -- sécurité 5 min (en pratique fini bien avant)
+    setState("ACTIVE", { duration = MAX_DURATION, round = roundNumber })
 
     local elapsed = 0
-    while roundActive and elapsed < STAR_DURATION do
+    while roundActive and elapsed < MAX_DURATION do
         task.wait(1)
         elapsed += 1
+
+        -- Vérifier les chutes (Y sous le seuil kill)
+        local toEliminate = {}
+        for player in pairs(activePlayers) do
+            local char = player.Character
+            local root = char and char:FindFirstChild("HumanoidRootPart")
+            if root and root.Position.Y < killY then
+                table.insert(toEliminate, player)
+            end
+        end
+
+        for _, player in ipairs(toEliminate) do
+            activePlayers[player] = nil
+            table.insert(fallOrder, player)
+
+            -- TP au lobby
+            local lobby       = workspace:FindFirstChild("Lobby")
+            local spawnFolder = lobby and lobby:FindFirstChild("SpawnLocations")
+            local spawnList   = spawnFolder and spawnFolder:GetChildren() or {}
+            local char = player.Character
+            if char then
+                local root = char:FindFirstChild("HumanoidRootPart")
+                if root then
+                    local sp = spawnList[math.random(1, math.max(#spawnList, 1))]
+                    root.CFrame = sp and (sp.CFrame + Vector3.new(0, 3, 0))
+                                     or CFrame.new(math.random(-20, 20), 12, math.random(-20, 20))
+                end
+            end
+            print(string.format("[RoundManager] 💀 %s éliminé (tombé, pos %d)", player.Name, #fallOrder))
+        end
+
+        -- Vérifier s'il reste 1 seul joueur
+        local remaining = 0
+        for _ in pairs(activePlayers) do remaining += 1 end
+        if remaining <= 1 then
+            roundActive = false
+        end
+
         reRoundState:FireAllClients({
             state = "ACTIVE",
-            data  = {
-                timeLeft = STAR_DURATION - elapsed,
-                elapsed  = elapsed,
-                round    = roundNumber,
-            },
+            data  = { timeLeft = MAX_DURATION - elapsed, elapsed = elapsed, round = roundNumber },
         })
     end
 
-    if _G.Course3 then _G.Course3.StopRound() end
     roundActive = false
 
-    -- ── RESULTS ──────────────────────────────────────────────
-    if starWinner then
-        print(string.format("[RoundManager] 🏆 Grand Vainqueur : %s", starWinner.Name))
+    -- ── Déterminer le vainqueur ───────────────────────────────
+    -- Dernier survivant (encore sur les tuiles) OU dernier à être tombé
+    local winner = nil
+    for p in pairs(activePlayers) do winner = p; break end   -- survivant
+    if not winner and #fallOrder > 0 then
+        winner = fallOrder[#fallOrder]    -- dernier à avoir chuté
+    end
+
+    if winner then
+        print(string.format("[RoundManager] 🏆 Grand Vainqueur : %s", winner.Name))
+        for p in pairs(tournamentPlayers) do
+            if p ~= winner then tournamentPlayers[p] = nil end
+        end
+        activePlayers = { [winner] = true }
+
         if _G.DataManager then
-            local data = _G.DataManager.GetData(starWinner)
+            local data = _G.DataManager.GetData(winner)
             if data then
                 data.stats.roundsPlayed += 1
                 data.stats.roundsWon    += 1
-                if _G.KarmaManager    then _G.KarmaManager.AwardVictoryBonus(starWinner) end
-                if _G.ChallengeManager then _G.ChallengeManager.UpdateProgress(starWinner, "win", 1) end
+                if _G.KarmaManager     then _G.KarmaManager.AwardVictoryBonus(winner) end
+                if _G.ChallengeManager then _G.ChallengeManager.UpdateProgress(winner, "win", 1) end
             end
         end
-        if _G.BadgeManager then
-            task.spawn(function() _G.BadgeManager.CheckBadges(starWinner) end)
-        end
+        if _G.BadgeManager then task.spawn(function() _G.BadgeManager.CheckBadges(winner) end) end
     end
 
-    local roundLabel2 = (GameConfig.Tournament.ROUNDS[roundNumber] or {}).label or "Finale"
+    -- ── RESULTS ──────────────────────────────────────────────
+    local roundLabel2 = (GameConfig.Tournament.ROUNDS[roundNumber] or {}).label or "Hex-a-Gone"
     setState("RESULTS", {
-        rankings  = starWinner
-            and { { name = starWinner.Name, rank = 1, cause = "star", qualified = true } }
+        rankings  = winner
+            and { { name = winner.Name, rank = 1, cause = "survived", qualified = true } }
             or  {},
         round     = roundNumber,
-        qualified = starWinner and 1 or 0,
+        qualified = winner and 1 or 0,
         label     = roundLabel2,
     })
 
@@ -827,9 +866,8 @@ end
 
 endStarRound = function()
     if not roundActive then return end
-    roundActive = false
-    if _G.Course3 then _G.Course3.StopRound() end
-    print("[RoundManager] ⭐ Finale terminée sans vainqueur (tous éliminés)")
+    roundActive = false   -- fait sortir le while loop
+    print("[RoundManager] Hex-a-Gone — manche terminée prématurément")
 end
 
 -- ============================================================

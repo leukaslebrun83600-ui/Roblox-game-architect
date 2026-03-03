@@ -1,184 +1,172 @@
 -- Course3.server.lua
--- Parcours 3 : FINALE — Pente géante + Étoile dorée
--- 10 joueurs spawnen sur la plateforme de départ.
--- Le premier à toucher l'étoile au sommet = Grand Vainqueur.
+-- Manche 3 : HEX-A-GONE — Plateformes disparaissantes
+--
+-- 4 niveaux de tuiles carrées empilés verticalement.
+-- Quand un joueur touche une tuile → elle devient rouge → disparaît.
+-- Au départ : chaque joueur est sur une plateforme individuelle (Y=90).
+-- Au lancement (10s countdown) : les plateformes tombent.
+-- Dernier survivant = Grand Vainqueur.
 
-local Players      = game:GetService("Players")
-local TweenService = game:GetService("TweenService")
+local Players = game:GetService("Players")
+local Debris  = game:GetService("Debris")
 
 -- ────────────────────────────────────────────────────────────
 -- CONFIG
 -- ────────────────────────────────────────────────────────────
-local START_X    =     0    -- centre X
-local START_Z    = 10000    -- Z de départ
-local BASE_Y     =    12    -- Y de la plateforme de départ
+local ARENA_X  =     0
+local ARENA_Z  = 10000   -- centre de la zone
 
-local PLAT_W     =    50    -- largeur plateforme
-local PLAT_D     =    40    -- profondeur plateforme
+local TILE_W   =   6.0   -- largeur/longueur d'une tuile (studs)
+local TILE_H   =   1.5   -- hauteur d'une tuile
+local TILE_N   =    10   -- tuiles par côté (10×10 = 100 tuiles/niveau)
+local TILE_GAP =  0.15   -- petit écart visuel entre les tuiles
 
-local SLOPE_L    =   380    -- longueur de la pente (studs, le long de la surface)
-local SLOPE_W    =    90    -- largeur de la pente (X)
-local SLOPE_T    =     3    -- épaisseur du plank
-local SLOPE_ANG  =    15    -- angle de la pente (degrés)
+-- 4 niveaux, de haut en bas — chaque niveau a 2 couleurs en damier
+local LEVELS = {
+    { y = 68, c1 = Color3.fromRGB(100, 160, 255), c2 = Color3.fromRGB( 60, 120, 220) },  -- bleu
+    { y = 50, c1 = Color3.fromRGB( 80, 210, 190), c2 = Color3.fromRGB( 50, 175, 155) },  -- teal
+    { y = 32, c1 = Color3.fromRGB(190, 100, 255), c2 = Color3.fromRGB(155,  65, 220) },  -- violet
+    { y = 14, c1 = Color3.fromRGB(255, 165,  50), c2 = Color3.fromRGB(225, 130,  25) },  -- orange
+}
 
-local STAR_DIAM  =    10    -- diamètre de l'étoile
+local SPAWN_Y = 90    -- Y des plateformes individuelles de départ
+local KILL_Y  = -25   -- joueur éliminé si Y descend sous ce seuil
 
 -- ────────────────────────────────────────────────────────────
 -- NETTOYAGE SESSION PRÉCÉDENTE
 -- ────────────────────────────────────────────────────────────
-local _old = game.Workspace:FindFirstChild("Course3")
+local _old = workspace:FindFirstChild("Course3")
 if _old then _old:Destroy() end
 
 local courseFolder = Instance.new("Folder")
 courseFolder.Name   = "Course3"
-courseFolder.Parent = game.Workspace
+courseFolder.Parent = workspace
 
-local function mkPart(name, size, cf, color, material, transp, canCollide)
-    local p = Instance.new("Part")
-    p.Name         = name
-    p.Size         = size
-    p.CFrame       = cf
-    p.Color        = color
-    p.Material     = material or Enum.Material.SmoothPlastic
-    p.Anchored     = true
-    p.CastShadow   = false
-    p.CanCollide   = (canCollide ~= false)
-    p.Transparency = transp or 0
-    p.Parent       = courseFolder
-    return p
+-- ────────────────────────────────────────────────────────────
+-- CONSTRUCTION DES 4 NIVEAUX DE TUILES
+-- ────────────────────────────────────────────────────────────
+-- totalW = 10×6 + 9×0.15 = 61.35 studs par côté
+local step       = TILE_W + TILE_GAP                    -- 6.15 studs entre deux centres
+local totalW     = TILE_N * TILE_W + (TILE_N - 1) * TILE_GAP  -- ≈ 61.35 studs
+local origin     = -totalW / 2 + TILE_W / 2             -- offset du 1er centre
+
+for levelIdx, lv in ipairs(LEVELS) do
+    local lvFolder = Instance.new("Folder")
+    lvFolder.Name   = "Level" .. levelIdx
+    lvFolder.Parent = courseFolder
+
+    for row = 0, TILE_N - 1 do
+        for col = 0, TILE_N - 1 do
+            local tx = ARENA_X + origin + col * step
+            local tz = ARENA_Z + origin + row * step
+
+            local tile = Instance.new("Part")
+            tile.Name       = string.format("T%d_%d_%d", levelIdx, row, col)
+            tile.Size       = Vector3.new(TILE_W - 0.1, TILE_H, TILE_W - 0.1)
+            tile.CFrame     = CFrame.new(tx, lv.y, tz)
+            tile.Color      = ((row + col) % 2 == 0) and lv.c1 or lv.c2
+            tile.Material   = Enum.Material.SmoothPlastic
+            tile.Anchored   = true
+            tile.CastShadow = false
+            tile.Parent     = lvFolder
+
+            -- ── Disparition au contact ────────────────────────────
+            tile.Touched:Connect(function(hit)
+                if tile:GetAttribute("Gone") then return end
+                local hum = hit.Parent:FindFirstChildOfClass("Humanoid")
+                if not hum or hum.Health <= 0 then return end
+
+                tile:SetAttribute("Gone", true)
+
+                task.spawn(function()
+                    -- Grace period
+                    task.wait(0.45)
+                    if not tile.Parent then return end
+                    -- Avertissement rouge
+                    tile.Color = Color3.fromRGB(230, 50, 40)
+                    task.wait(0.35)
+                    if not tile.Parent then return end
+                    -- Disparition
+                    tile.CanCollide   = false
+                    tile.Transparency = 1
+                    Debris:AddItem(tile, 3)
+                end)
+            end)
+        end
+    end
 end
 
 -- ────────────────────────────────────────────────────────────
--- GÉOMÉTRIE DE LA PENTE
+-- PLATEFORMES INDIVIDUELLES DE DÉPART (10 joueurs)
+-- 2 rangées de 5, au-dessus du niveau 1 (Y=68)
+-- Elles tombent au lancement de la manche.
 -- ────────────────────────────────────────────────────────────
-local ang    = math.rad(SLOPE_ANG)
-local horizD = SLOPE_L * math.cos(ang)
-local vertR  = SLOPE_L * math.sin(ang)
+local spawnPlatforms = {}
 
--- ────────────────────────────────────────────────────────────
--- PLATEFORME DE DÉPART
--- ────────────────────────────────────────────────────────────
-mkPart("Plat_Depart",
-    Vector3.new(PLAT_W, 1.2, PLAT_D),
-    CFrame.new(START_X, BASE_Y, START_Z - PLAT_D / 2),
-    Color3.fromRGB(120, 80, 200),
-    Enum.Material.SmoothPlastic)
+local SPAWN_ROW_Z = { ARENA_Z - 14, ARENA_Z + 14 }
 
--- ────────────────────────────────────────────────────────────
--- PENTE GÉANTE
--- ────────────────────────────────────────────────────────────
-mkPart("Pente",
-    Vector3.new(SLOPE_W, SLOPE_T, SLOPE_L),
-    CFrame.new(START_X, BASE_Y + vertR / 2, START_Z + horizD / 2)
-        * CFrame.Angles(-ang, 0, 0),
-    Color3.fromRGB(255, 220, 60),
-    Enum.Material.SmoothPlastic)
+for row = 1, 2 do
+    for col = 1, 5 do
+        local sx = ARENA_X + (col - 3) * 13   -- X : -26, -13, 0, 13, 26
+        local sz = SPAWN_ROW_Z[row]
 
--- Garde-corps gauche
-mkPart("Rail_G",
-    Vector3.new(1.2, 6, SLOPE_L),
-    CFrame.new(START_X - SLOPE_W / 2, BASE_Y + vertR / 2 + 3, START_Z + horizD / 2)
-        * CFrame.Angles(-ang, 0, 0),
-    Color3.fromRGB(80, 60, 160), Enum.Material.SmoothPlastic)
+        local sp = Instance.new("Part")
+        sp.Name       = string.format("SpawnPlat_%d_%d", row, col)
+        sp.Size       = Vector3.new(9, 1.2, 9)
+        sp.CFrame     = CFrame.new(sx, SPAWN_Y, sz)
+        sp.Color      = Color3.fromRGB(255, 220, 60)
+        sp.Material   = Enum.Material.SmoothPlastic
+        sp.Anchored   = true
+        sp.CastShadow = false
+        sp.Parent     = courseFolder
 
--- Garde-corps droit
-mkPart("Rail_D",
-    Vector3.new(1.2, 6, SLOPE_L),
-    CFrame.new(START_X + SLOPE_W / 2, BASE_Y + vertR / 2 + 3, START_Z + horizD / 2)
-        * CFrame.Angles(-ang, 0, 0),
-    Color3.fromRGB(80, 60, 160), Enum.Material.SmoothPlastic)
-
--- ────────────────────────────────────────────────────────────
--- ÉTOILE DORÉE
--- ────────────────────────────────────────────────────────────
-local starZ = START_Z + horizD + 3
-local starY = BASE_Y  + vertR  + 7
-
-local star = Instance.new("Part")
-star.Name         = "Star"
-star.Shape        = Enum.PartType.Ball
-star.Size         = Vector3.new(STAR_DIAM, STAR_DIAM, STAR_DIAM)
-star.Color        = Color3.fromRGB(255, 215, 0)
-star.Material     = Enum.Material.Neon
-star.Anchored     = true
-star.CastShadow   = false
-star.CanCollide   = false
-star.CFrame       = CFrame.new(START_X, starY, starZ)
-star.Parent       = courseFolder
-
-TweenService:Create(star,
-    TweenInfo.new(0.85, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true),
-    { Size = Vector3.new(STAR_DIAM + 3, STAR_DIAM + 3, STAR_DIAM + 3) }
-):Play()
-
-local halo = Instance.new("Part")
-halo.Name         = "StarHalo"
-halo.Shape        = Enum.PartType.Ball
-halo.Size         = Vector3.new(STAR_DIAM + 8, STAR_DIAM + 8, STAR_DIAM + 8)
-halo.Color        = Color3.fromRGB(255, 245, 150)
-halo.Material     = Enum.Material.Neon
-halo.Anchored     = true
-halo.CastShadow   = false
-halo.CanCollide   = false
-halo.Transparency = 0.78
-halo.CFrame       = CFrame.new(START_X, starY, starZ)
-halo.Parent       = courseFolder
-
-TweenService:Create(halo,
-    TweenInfo.new(1.2, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true),
-    { Transparency = 0.92 }
-):Play()
+        table.insert(spawnPlatforms, sp)
+    end
+end
 
 -- ────────────────────────────────────────────────────────────
 -- API PUBLIQUE (_G.Course3)
 -- ────────────────────────────────────────────────────────────
-local roundActive    = false
-local winnerDeclared = false
-
 local Course3 = {}
-_G.Course3 = Course3
+_G.Course3    = Course3
 
-Course3.OnStarTouched = nil
-
-Course3.StartRound = function()
-    roundActive    = true
-    winnerDeclared = false
-    print("[Course3] ▶ Manche démarrée")
-end
-
-Course3.StopRound = function()
-    roundActive = false
-end
-
+-- Positions de spawn : au-dessus des plateformes individuelles
 Course3.GetSpawnCFrames = function(n)
     local spawns = {}
     for i = 1, n do
-        local col = (i - 1) % 5
-        local row = math.floor((i - 1) / 5)
-        local sx  = START_X + (col - 2) * 8
-        local sz  = (START_Z - PLAT_D + 5) + row * 5
-        table.insert(spawns, CFrame.new(sx, BASE_Y + 3, sz))
+        local sp = spawnPlatforms[i]
+        if sp then
+            table.insert(spawns, sp.CFrame + Vector3.new(0, 3.5, 0))
+        else
+            -- Fallback : disperse sur le niveau 1
+            local tx = ARENA_X + (math.random() - 0.5) * totalW
+            local tz = ARENA_Z + (math.random() - 0.5) * totalW
+            table.insert(spawns, CFrame.new(tx, LEVELS[1].y + 5, tz))
+        end
     end
     return spawns
 end
 
--- ── Étoile ───────────────────────────────────────────────────
-star.Touched:Connect(function(hit)
-    if not roundActive or winnerDeclared then return end
-    local char   = hit.Parent
-    local player = Players:GetPlayerFromCharacter(char)
-    if not player then return end
-    local hum = char:FindFirstChildOfClass("Humanoid")
-    if not hum or hum.Health <= 0 then return end
+-- Lâche les plateformes individuelles (appelé au démarrage de la manche)
+Course3.LaunchSpawnPlatforms = function()
+    for _, sp in ipairs(spawnPlatforms) do
+        if sp and sp.Parent then
+            sp.Anchored = false
+        end
+    end
+    -- Nettoyage après la chute
+    task.delay(10, function()
+        for _, sp in ipairs(spawnPlatforms) do
+            if sp and sp.Parent then sp:Destroy() end
+        end
+    end)
+    print("[Course3] ▶ Plateformes de départ lâchées !")
+end
 
-    winnerDeclared = true
-    roundActive    = false
-
-    print(string.format("[Course3] ⭐ %s a touché l'étoile !", player.Name))
-    if Course3.OnStarTouched then Course3.OnStarTouched(player) end
-end)
+Course3.KILL_Y = KILL_Y
 
 -- ────────────────────────────────────────────────────────────
-print("[Course3] ✅ Finale prête")
-print(string.format("  Pente : %d studs à %d° | Étoile : Y=%.0f Z=%.0f",
-    SLOPE_L, SLOPE_ANG, starY, starZ))
+print("[Course3] ✅ Hex-a-Gone prêt")
+print(string.format("  %d niveaux | %d tuiles/niveau | Y=%d/%d/%d/%d | Kill Y=%d",
+    #LEVELS, TILE_N * TILE_N,
+    LEVELS[1].y, LEVELS[2].y, LEVELS[3].y, LEVELS[4].y, KILL_Y))

@@ -5,9 +5,9 @@
 local Players = game:GetService("Players")
 
 -- ── Position spawn ──────────────────────────────────────────
--- Course3 : START_Z=10000, PLAT_D=40 → plateforme Z=9960→10000
--- On spawn au milieu de la plateforme, 3 studs au-dessus
-local FINISH_SPAWN = CFrame.new(0, 16, 9975)
+-- Course3 : Hex-a-Gone centré en (0, ?, 10000)
+-- Spawn sur une plateforme individuelle au-dessus du niveau 1 (Y≈94)
+local FINISH_SPAWN = CFrame.new(0, 94, 10000)
 
 -- ── RemoteEvent ─────────────────────────────────────────────
 local reTeleport = game.ReplicatedStorage:WaitForChild("Events")
@@ -20,4 +20,4 @@ reTeleport.OnServerEvent:Connect(function(player)
     if root then root.CFrame = FINISH_SPAWN end
 end)
 
-print("[FinishLineTest] ✅ Prêt  |  [Y] = TP Parcours 3 / Finale Étoile  (Z=9975, Y=16)")
+print("[FinishLineTest] ✅ Prêt  |  [Y] = TP Arène Couronne (Z=10070, Y=15)")
