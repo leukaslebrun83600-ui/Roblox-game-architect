@@ -249,7 +249,7 @@ local function buildSection(courseFolder, sectionDef, index, startY, courseStart
         local cp = part(cpFolder, cpName,
             Vector3.new(platW + 4, 8, 10),
             CFrame.new(0, yBase + 4, zStart + 90),
-            Color3.fromRGB(0, 210, 100), Enum.Material.Neon, 0.6)
+            Color3.fromRGB(0, 210, 100), Enum.Material.Neon, 1)
         cp.CanCollide = false
         cp:SetAttribute("SectionIdx", index)
         cp:SetAttribute("CheckpointLabel", cpName)
@@ -341,7 +341,7 @@ local function buildSection(courseFolder, sectionDef, index, startY, courseStart
         local cp = part(cpFolder, cpName,
             Vector3.new(platW + 4, 8, 10),
             CFrame.new(0, yBase + 4, zStart + 90),
-            Color3.fromRGB(0, 210, 100), Enum.Material.Neon, 0.6)
+            Color3.fromRGB(0, 210, 100), Enum.Material.Neon, 1)
         cp.CanCollide = false
         cp:SetAttribute("SectionIdx", index)
         cp:SetAttribute("CheckpointLabel", cpName)
@@ -354,11 +354,13 @@ local function buildSection(courseFolder, sectionDef, index, startY, courseStart
     -- Layout : Plat_A →[5]→ Ball1 →[3]→ Ball2 →[3]→ Ball3 →[3]→ Ball4 →[4]→ Plat_E → Links
     -- Sphères statiques : le défi vient de la surface courbe (glissant, imprécis)
     if sectionDef.hasBalls then
-        local BALL_R  = 5      -- rayon des boules (diamètre 10 studs)
-        local SPACING = 13     -- centre-à-centre (gap surface = 3 studs)
-        local N_BALLS = 4
-        local PED_R   = 2.5    -- rayon du pied
-        local PED_H   = 8      -- hauteur du pied
+        local BALL_R      = 5      -- rayon des boules (diamètre 10 studs)
+        local SPACING     = 13     -- centre-à-centre (gap surface = 3 studs)
+        local N_BALLS     = 4
+        local PED_R       = 1.2    -- rayon du bâton (fin comme une sucette)
+        local KILL_FLOOR  = -15    -- Y du kill floor (même valeur que dans buildLobby)
+        -- Bâton s'étend depuis la base de la boule (yBase-BALL_R) jusqu'au kill floor
+        local PED_H       = (yBase - BALL_R) - KILL_FLOOR
 
         -- Plateforme d'approche
         -- Bord avant à dz=15, gap=5 jusqu'au bord de Ball1 (dz=20) ✓
@@ -366,15 +368,14 @@ local function buildSection(courseFolder, sectionDef, index, startY, courseStart
             Vector3.new(platW, 1.2, 14),
             CFrame.new(0, yBase, zStart + 8), sectionDef.color)
 
-        -- 4 boules + pieds blancs
+        -- 4 boules + bâtons fins (style sucette)
         -- Ball1 center : dz=25  |  Ball4 center : dz=64  |  Ball4 far edge : dz=69
         local ball1Z = zStart + 25
         for i = 1, N_BALLS do
             local bz = ball1Z + (i - 1) * SPACING
 
-            -- Pied (cylindre vertical blanc)
-            -- Size (PED_H, PED_R*2, PED_R*2) : PED_H le long de l'axe (local X → world Y)
-            local pedY = yBase - BALL_R - PED_H / 2
+            -- Bâton (cylindre fin, du bas de la boule jusqu'au kill floor)
+            local pedY = (yBase - BALL_R + KILL_FLOOR) / 2  -- centre entre base boule et kill floor
             local ped = part(platFolder, "Pedestal_" .. i,
                 Vector3.new(PED_H, PED_R * 2, PED_R * 2),
                 CFrame.new(0, pedY, bz) * CFrame.Angles(0, 0, math.pi / 2),
@@ -411,7 +412,7 @@ local function buildSection(courseFolder, sectionDef, index, startY, courseStart
         local cp = part(cpFolder, cpName,
             Vector3.new(platW + 4, 8, 10),
             CFrame.new(0, yBase + 4, zStart + 90),
-            Color3.fromRGB(0, 210, 100), Enum.Material.Neon, 0.6)
+            Color3.fromRGB(0, 210, 100), Enum.Material.Neon, 1)
         cp.CanCollide = false
         cp:SetAttribute("SectionIdx", index)
         cp:SetAttribute("CheckpointLabel", cpName)
@@ -472,7 +473,7 @@ local function buildSection(courseFolder, sectionDef, index, startY, courseStart
         local cp = part(cpFolder, cpName,
             Vector3.new(platW + 4, 8, 10),
             CFrame.new(0, yBase + 4, zStart + 90),
-            Color3.fromRGB(0, 210, 100), Enum.Material.Neon, 0.6)
+            Color3.fromRGB(0, 210, 100), Enum.Material.Neon, 1)
         cp.CanCollide = false
         cp:SetAttribute("SectionIdx", index)
         cp:SetAttribute("CheckpointLabel", cpName)
@@ -565,7 +566,7 @@ local function buildSection(courseFolder, sectionDef, index, startY, courseStart
         local cp = part(cpFolder, cpName,
             Vector3.new(pendW + 4, 8, 10),
             CFrame.new(0, yBase + 4, zStart + 90),
-            Color3.fromRGB(0, 210, 100), Enum.Material.Neon, 0.6)
+            Color3.fromRGB(0, 210, 100), Enum.Material.Neon, 1)
         cp.CanCollide = false
         cp:SetAttribute("SectionIdx", index)
         cp:SetAttribute("CheckpointLabel", cpName)
@@ -690,7 +691,7 @@ local function buildSection(courseFolder, sectionDef, index, startY, courseStart
         local cp = part(cpFolder, cpName,
             Vector3.new(spinW + 4, 8, 10),
             CFrame.new(0, yBase + 4, zStart + 90),
-            Color3.fromRGB(0, 210, 100), Enum.Material.Neon, 0.6)
+            Color3.fromRGB(0, 210, 100), Enum.Material.Neon, 1)
         cp.CanCollide = false
         cp:SetAttribute("SectionIdx", index)
         cp:SetAttribute("CheckpointLabel", cpName)
@@ -744,7 +745,7 @@ local function buildSection(courseFolder, sectionDef, index, startY, courseStart
         local cp = part(cpFolder, cpName,
             Vector3.new(FULL_W + 4, 8, 10),
             CFrame.new(0, yBase + 4, zStart + 12),
-            Color3.fromRGB(0, 210, 100), Enum.Material.Neon, 0.6)
+            Color3.fromRGB(0, 210, 100), Enum.Material.Neon, 1)
         cp.CanCollide = false
         cp:SetAttribute("SectionIdx", index)
         cp:SetAttribute("CheckpointLabel", cpName)
@@ -835,7 +836,7 @@ local function buildSection(courseFolder, sectionDef, index, startY, courseStart
             Vector3.new(FINISH_W, 12, 10),
             CFrame.new(0, yBase + 4, zStart + FINISH_D - 4),
             Color3.fromRGB(255, 215, 0),
-            Enum.Material.Neon, 0.35)
+            Enum.Material.Neon, 1)
         arrival.CanCollide = false
         arrival.CanTouch   = true
         arrival:SetAttribute("CourseId", courseId or 1)
@@ -922,7 +923,7 @@ local function buildSection(courseFolder, sectionDef, index, startY, courseStart
         local cp = part(cpFolder, cpName,
             Vector3.new(platW + 4, 8, 10),
             CFrame.new(0, yBase + 4, zStart + 13),
-            Color3.fromRGB(0, 210, 100), Enum.Material.Neon, 0.6)
+            Color3.fromRGB(0, 210, 100), Enum.Material.Neon, 1)
         cp.CanCollide = false
         cp:SetAttribute("SectionIdx", index)
         cp:SetAttribute("CheckpointLabel", cpName)
@@ -1028,7 +1029,7 @@ local function buildSection(courseFolder, sectionDef, index, startY, courseStart
             CFrame.new(0, zonePlatY + 4, zStart + tp.zoneDz),
             Color3.fromRGB(255, 80, 80),
             Enum.Material.Neon,
-            0.85
+            1
         )
         zone.CanCollide = false
         zone:SetAttribute("TrapType", trapDef)
@@ -1070,7 +1071,7 @@ local function buildSection(courseFolder, sectionDef, index, startY, courseStart
             CFrame.new(0, platY + 4, zStart + 90),  -- juste après Plat E (dz=76)
             Color3.fromRGB(0, 210, 100),
             Enum.Material.Neon,
-            0.6
+            1
         )
         cp.CanCollide = false
         cp:SetAttribute("SectionIdx", index)
@@ -1099,7 +1100,7 @@ local function buildSection(courseFolder, sectionDef, index, startY, courseStart
             CFrame.new(0, platEY + 5, zStart + 110),  -- au-dessus de la plateforme d'arrivée
             Color3.fromRGB(255, 215, 0),
             Enum.Material.Neon,
-            0.4
+            1
         )
         arrival.CanCollide = false
         arrival:SetAttribute("CourseId", courseId or 1)

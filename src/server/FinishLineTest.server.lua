@@ -1,5 +1,5 @@
 -- FinishLineTest.server.lua
--- TP debug vers la plateforme de départ du Parcours 3 (Finale Étoile)
+-- TP debug vers la plateforme de départ du Parcours 3 (Hex-a-Gone)
 -- Touche Y (client) → FireServer → TP ici
 
 local Players = game:GetService("Players")
@@ -20,4 +20,4 @@ reTeleport.OnServerEvent:Connect(function(player)
     if root then root.CFrame = FINISH_SPAWN end
 end)
 
-print("[FinishLineTest] ✅ Prêt  |  [Y] = TP Arène Couronne (Z=10070, Y=15)")
+print("[FinishLineTest] ✅ Prêt  |  [Y] = TP Hex-a-Gone (Z=10000, Y=94)")
