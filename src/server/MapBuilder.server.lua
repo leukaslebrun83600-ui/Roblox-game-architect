@@ -24,6 +24,7 @@ local Workspace         = game.Workspace
 local SECTION_LENGTH  = 120   -- (studs) longueur d'une section
 local COURSE_START_Z  = 200   -- Z du point de départ du parcours
 local BASE_Y          = 10    -- hauteur du sol de base
+local KILL_FLOOR      = -15   -- Y du kill floor
 local LOBBY_OFFSET_X  = 10000 -- déplace le lobby 10 000 studs sur X → invisible depuis le parcours
 
 -- Définition des 9 sections (source : PRD 03)
@@ -932,55 +933,55 @@ local function buildSection(courseFolder, sectionDef, index, startY, courseStart
         return exitSurfY  -- le Chateau commence à cette hauteur
     end
 
+    -- ── Helpers : bloc descendant jusqu'au kill floor ────────
+    local function rectH(surfY)  return surfY - KILL_FLOOR end           -- ex: 10-(-15)=25
+    local function rectCY(surfY) return (surfY + KILL_FLOOR) / 2 end     -- ex: -2.5
+
     -- ── Plateforme de spawn (section 1 uniquement) ───────────
-    -- Grande plateforme placée AVANT Plat_A pour accueillir ~30 joueurs.
-    -- 70 studs de large × 50 studs de profondeur, centre à Z = zStart - 35.
-    -- Gap de 6 studs vers Plat_A (zStart+8) → jumpable.
     if index == 1 then
+        local sy = yBase
         part(platFolder, "Plat_Spawn",
-            Vector3.new(70, 1.2, 50),
-            CFrame.new(0, yBase, zStart - 28),
+            Vector3.new(70, rectH(sy), 50),
+            CFrame.new(0, rectCY(sy), zStart - 28),
             sectionDef.color)
     end
 
     -- ── Plateformes (5 par section) ──────────────────────────
-    -- Gaps de 6-8 studs entre plateformes (jumpable avec JumpPower=60)
     local yRise = sectionDef.yBias ~= 0 and (sectionDef.yBias * 0.08) or 0
     local platDefs = {
-        { dz =  8,  dy = 0,         w = platW,     d = 12, label = "A" },
-        { dz = 26,  dy = yRise,     w = platW - 2, d = 10, label = "B" },
-        { dz = 44,  dy = yRise * 2, w = platW,     d = 10, label = "C" },
-        { dz = 60,  dy = yRise * 3, w = platW - 2, d = 8,  label = "D" },
-        { dz = 76,  dy = yRise * 4, w = platW,     d = 12, label = "E" },
+        { dz =  8,  dy = 0,         w = platW, d = 10, label = "A" },
+        { dz = 26,  dy = yRise,     w = platW, d = 10, label = "B" },
+        { dz = 44,  dy = yRise * 2, w = platW, d = 10, label = "C" },
+        { dz = 60,  dy = yRise * 3, w = platW, d = 10, label = "D" },
+        { dz = 76,  dy = yRise * 4, w = platW, d = 10, label = "E" },
     }
 
-    local platParts = {}
+    local platParts  = {}
+    local platSurfYs = {}  -- surface Y (top) de chaque plateforme
     for _, pd in ipairs(platDefs) do
+        local sy = yBase + pd.dy
+        platSurfYs[pd.label] = sy
         local p = part(
             platFolder,
             "Plat_" .. pd.label,
-            Vector3.new(pd.w, 1.2, pd.d),
-            CFrame.new(0, yBase + pd.dy, zStart + pd.dz),
+            Vector3.new(pd.w, rectH(sy), pd.d),
+            CFrame.new(0, rectCY(sy), zStart + pd.dz),
             sectionDef.color
         )
         platParts[pd.label] = p
     end
 
     -- ── Plateformes de liaison vers la section suivante ──────
-    -- Gap total Plat_E → Plat_A suivante = 40 studs en Z.
-    -- Deux tremplins comblent ce gap en créant de petits sauts faciles :
-    --   Plat_E (dz=76, end=82) →[6]→ Link1 (dz=95) →[5]→ Link2 (dz=112) →[5]→ Plat_A suivante (dz=128)
-    -- Le Checkpoint trigger (dz=90, CanCollide=false) est traversé naturellement entre Plat_E et Link1.
     local platEY = yBase + yRise * 4
     if not sectionDef.isEnd then
         part(platFolder, "Plat_Link1",
-            Vector3.new(platW - 4, 1.2, 14),
-            CFrame.new(0, platEY, zStart + 95),
+            Vector3.new(platW, rectH(platEY), 14),
+            CFrame.new(0, rectCY(platEY), zStart + 95),
             sectionDef.color
         )
         part(platFolder, "Plat_Link2",
-            Vector3.new(platW - 4, 1.2, 14),
-            CFrame.new(0, platEY, zStart + 112),
+            Vector3.new(platW, rectH(platEY), 14),
+            CFrame.new(0, rectCY(platEY), zStart + 112),
             sectionDef.color
         )
     end
@@ -1000,10 +1001,8 @@ local function buildSection(courseFolder, sectionDef, index, startY, courseStart
         local tp = trapPositions[t]
         if not tp then break end
 
-        local btnPart   = platParts[tp.btnLabel]
-        local btnPlatY  = btnPart  and btnPart.Position.Y  or yBase
-        local zonePart  = platParts[tp.zoneLabel]
-        local zonePlatY = zonePart and zonePart.Position.Y or yBase
+        local btnPlatY  = platSurfYs[tp.btnLabel]  or yBase  -- top surface du bloc
+        local zonePlatY = platSurfYs[tp.zoneLabel] or yBase
 
         -- Bouton piège (sur la plateforme AVANT la zone)
         local btnName = string.format("TrapButton_%s_%d", sectionDef.name, t)
@@ -1041,8 +1040,7 @@ local function buildSection(courseFolder, sectionDef, index, startY, courseStart
 
     -- ── Bouton Sacrifice ────────────────────────────────────
     if sectionDef.sac then
-        local platC    = platParts["C"]
-        local platY    = platC and platC.Position.Y or yBase
+        local platY    = platSurfYs["C"] or yBase
 
         local sacName  = string.format("SacrificeButton_%s", sectionDef.name)
         local sac = part(
@@ -1060,8 +1058,7 @@ local function buildSection(courseFolder, sectionDef, index, startY, courseStart
 
     -- ── Checkpoint (fin de section, sauf arrivée) ────────────
     if not sectionDef.isEnd then
-        local platE = platParts["E"]
-        local platY = platE and platE.Position.Y or yBase
+        local platY = platSurfYs["E"] or yBase  -- top surface de Plat_E
 
         local cpName = string.format("Checkpoint_%02d", index)
         local cp = part(
