@@ -480,22 +480,25 @@ for _, side in ipairs({"L", "R"}) do
         Color3.fromRGB(255, 190, 80))
 end
 
--- ── Escaliers dans les fosses latérales (descente en Z, depuis PLAT_Y_SURF → PIT3_Y) ──
--- L'ensemble des marches couvre exactement la longueur de S3_Platform (S3_PLAT_D)
-local S3_STAIR_H  = 2                                        -- hauteur par marche
-local S3_STAIR_N  = (PLAT_Y_SURF - PIT3_Y) / S3_STAIR_H     -- = 11 marches
-local S3_STAIR_D  = S3_PLAT_D / S3_STAIR_N                  -- profondeur auto ≈ 7.3 studs
-local S3_STAIR_W  = 10                                       -- largeur (en X, dans la fosse)
-local S3_STAIR_Z0 = S3_PLAT_START                            -- démarre avec la plateforme centrale
+-- ── Escaliers de chaque côté de S3_Ramp (remontée vers Platform2) ──────────
+-- Côté gauche ET droit de la pente, de Z=S3_START_Z à Z=S3_PLAT_START
+-- Largeur : du bord de la rampe (±S3_RAMP_W/2 = ±18) jusqu'au mur S3_PitOuter (±43)
+-- Descente : de PLAT_Y_SURF (haut, côté Platform2) jusqu'à PIT3_Y (bas, côté plateforme)
+local S3_STAIR_H  = 2
+local S3_STAIR_N  = (PLAT_Y_SURF - PIT3_Y) / S3_STAIR_H   -- = 11 marches
+local S3_STAIR_D  = S3_RAMP_H_LEN / S3_STAIR_N             -- ≈ 4.1 studs/marche, couvre la pente
+local S3_STAIR_W  = PIT3_W                                  -- = 24 studs, de ±18 à ±42
 
 for _, side in ipairs({"L", "R"}) do
     local sign  = (side == "L") and -1 or 1
-    local stepX = sign * (S3_RAMP_W / 2 + PIT3_W / 2)  -- centre X de la fosse = ±30
+    local stepX = sign * (S3_RAMP_W / 2 + S3_STAIR_W / 2)  -- centre X = ±30
     for si = 0, S3_STAIR_N - 1 do
+        -- si=0  : marche haute à Z=S3_START_Z,    surface à PLAT_Y_SURF
+        -- si=N-1: marche basse à Z=S3_PLAT_START, surface à PIT3_Y + step_H
         local topY    = PLAT_Y_SURF - si * S3_STAIR_H
-        local blockH  = topY - PIT3_Y
+        local blockH  = topY - PIT3_Y                        -- bloc solide du sol jusqu'à la surface
         local blockCY = PIT3_Y + blockH / 2
-        local blockCZ = S3_STAIR_Z0 + si * S3_STAIR_D + S3_STAIR_D / 2
+        local blockCZ = S3_START_Z + si * S3_STAIR_D + S3_STAIR_D / 2
         mkPart(string.format("S3_Stair_%s_%d", side, si),
             Vector3.new(S3_STAIR_W, blockH, S3_STAIR_D),
             CFrame.new(stepX, blockCY, blockCZ),
@@ -868,7 +871,7 @@ end)
 -- ============================================================
 -- TP (touche Y → spawn platform)
 -- ============================================================
-local FINISH_SPAWN = CFrame.new(ZONE_X, BASE_Y + SPAWN_ELEV + 4, ZONE_Z)
+local FINISH_SPAWN = CFrame.new(ZONE_X, PLAT3_Y + 4, S3_PLAT_START + 8)
 
 local ok, reTeleport = pcall(function()
     return game.ReplicatedStorage:WaitForChild("Events", 10)
