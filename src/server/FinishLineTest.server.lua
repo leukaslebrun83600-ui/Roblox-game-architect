@@ -566,23 +566,8 @@ for i, def in ipairs(s3CylDefs) do
 end
 
 -- ============================================================
--- PLATEFORME D'ATTENTE
+-- CONSTANTES SECTION 4 (définies tôt car utilisées par WaitPlatform)
 -- ============================================================
-local WAIT_Z      = PIT3_Z_END
-local WAIT_PLAT_D = 80
-local WAIT_PLAT_H = 2
-
-mkPart("WaitPlatform",
-    Vector3.new(RAMP_W - 2, WAIT_PLAT_H, WAIT_PLAT_D),
-    CFrame.new(ZONE_X, PLAT3_Y - WAIT_PLAT_H / 2, WAIT_Z + WAIT_PLAT_D / 2),
-    Color3.fromRGB(200, 240, 255))
-
--- ============================================================
--- SECTION 4 : MURS COULISSANTS
--- ============================================================
-local S4_Z        = WAIT_Z + WAIT_PLAT_D
-local S4_PLAT_D   = 60
-local S4_PLAT_H   = 2
 local S4_PANEL_W  = 18
 local S4_DIV_W    = 2
 local S4_WALL_H   = 12
@@ -591,14 +576,27 @@ local S4_RISE_SPD = 14
 local S4_FALL_SPD = 18
 local S4_PANEL_XS = {-30, -10, 10, 30}
 local S4_DIV_XS   = {-20, 0, 20}
-local S4_TOTAL_W  = 4 * S4_PANEL_W + 3 * S4_DIV_W
+local S4_TOTAL_W  = 4 * S4_PANEL_W + 3 * S4_DIV_W  -- 78
 
-mkPart("S4_Platform",
-    Vector3.new(S4_TOTAL_W, S4_PLAT_H, S4_PLAT_D),
-    CFrame.new(ZONE_X, PLAT3_Y - S4_PLAT_H / 2, S4_Z + S4_PLAT_D / 2),
+-- ============================================================
+-- PLATEFORME D'ATTENTE (contient les murs coulissants)
+-- ============================================================
+local WAIT_Z      = PIT3_Z_END
+local WAIT_PLAT_D = 130   -- assez long pour 4 rangées espacées + zones libres
+local WAIT_PLAT_H = 2
+
+mkPart("WaitPlatform",
+    Vector3.new(S4_TOTAL_W, WAIT_PLAT_H, WAIT_PLAT_D),
+    CFrame.new(ZONE_X, PLAT3_Y - WAIT_PLAT_H / 2, WAIT_Z + WAIT_PLAT_D / 2),
     Color3.fromRGB(200, 240, 255))
 
-local s4WallZOffsets = {10, 22, 34, 46}
+-- ============================================================
+-- SECTION 4 : MURS COULISSANTS (sur la WaitPlatform)
+-- ============================================================
+local S4_Z = WAIT_Z   -- murs démarrent au début de la WaitPlatform
+
+-- Espacement généreux entre les rangées : 30 studs d'écart
+local s4WallZOffsets = {15, 45, 75, 105}
 local s4WallData = {}
 
 for ri, dz in ipairs(s4WallZOffsets) do
@@ -637,7 +635,7 @@ end
 -- ============================================================
 -- LIGNE D'ARRIVÉE
 -- ============================================================
-local FIN_Z      = S4_Z + S4_PLAT_D
+local FIN_Z      = WAIT_Z + WAIT_PLAT_D  -- juste après la WaitPlatform
 local FIN_PLAT_D = 24
 local FIN_ARCH_H = 20
 local FIN_RED    = Color3.fromRGB(255, 50, 80)
@@ -649,10 +647,10 @@ local nCZ = math.floor(FIN_PLAT_D  / CHECK_W)
 for col = 0, nCX - 1 do
     for row = 0, nCZ - 1 do
         mkPart(string.format("FinCheck_%d_%d", col, row),
-            Vector3.new(CHECK_W, S4_PLAT_H, CHECK_W),
+            Vector3.new(CHECK_W, WAIT_PLAT_H, CHECK_W),
             CFrame.new(
                 -S4_TOTAL_W/2 + col * CHECK_W + CHECK_W/2,
-                PLAT3_Y - S4_PLAT_H / 2,
+                PLAT3_Y - WAIT_PLAT_H / 2,
                 FIN_Z + row * CHECK_W + CHECK_W/2),
             ((col + row) % 2 == 0)
                 and Color3.fromRGB(20, 20, 20)
