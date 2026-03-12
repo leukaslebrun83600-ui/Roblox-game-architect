@@ -4,6 +4,7 @@
 local Players    = game:GetService("Players")
 local RunService = game:GetService("RunService")
 
+
 -- ============================================================
 -- CONFIG
 -- ============================================================
@@ -90,6 +91,38 @@ local CANNON_PHASE = {0, 0.9, 1.8, 0.45}
 
 -- ── Respawn ───────────────────────────────────────────────────
 local RAMP_RESPAWN = CFrame.new(ZONE_X, BASE_Y + 4, RAMP_START_Z - 3)
+
+-- ============================================================
+-- RESPAWN — défini en premier, avant toute géométrie.
+-- ============================================================
+local checkpointRespawn = {}
+
+Players.PlayerAdded:Connect(function(player)
+    player.CharacterAdded:Connect(function(char)
+        local root = char:WaitForChild("HumanoidRootPart", 5)
+        if root then
+            task.wait(0.15)
+            root.CFrame = checkpointRespawn[player] or RAMP_RESPAWN
+        end
+    end)
+end)
+
+Players.PlayerRemoving:Connect(function(player)
+    checkpointRespawn[player] = nil
+end)
+
+-- Fallback : déplace les joueurs déjà chargés (cas Studio Play)
+task.spawn(function()
+    task.wait(1.0)
+    for _, player in ipairs(Players:GetPlayers()) do
+        local char = player.Character
+        if not char then continue end
+        local root = char:FindFirstChild("HumanoidRootPart")
+        if root then
+            root.CFrame = checkpointRespawn[player] or RAMP_RESPAWN
+        end
+    end
+end)
 
 -- ============================================================
 -- DOSSIER
@@ -585,10 +618,12 @@ local WAIT_Z      = PIT3_Z_END
 local WAIT_PLAT_D = 130   -- assez long pour 4 rangées espacées + zones libres
 local WAIT_PLAT_H = 2
 
+-- S4_TOTAL_W = 78 : les panneaux couvrent pile la largeur → zéro espace sur les côtés
 mkPart("WaitPlatform",
     Vector3.new(S4_TOTAL_W, WAIT_PLAT_H, WAIT_PLAT_D),
     CFrame.new(ZONE_X, PLAT3_Y - WAIT_PLAT_H / 2, WAIT_Z + WAIT_PLAT_D / 2),
     Color3.fromRGB(200, 240, 255))
+
 
 -- ============================================================
 -- SECTION 4 : MURS COULISSANTS (sur la WaitPlatform)
@@ -633,110 +668,256 @@ for ri, dz in ipairs(s4WallZOffsets) do
 end
 
 -- ============================================================
--- LIGNE D'ARRIVÉE
+-- PUNCHING BALLS (juste avant chaque rangée de murs S4)
 -- ============================================================
-local FIN_Z      = WAIT_Z + WAIT_PLAT_D  -- juste après la WaitPlatform
-local FIN_PLAT_D = 24
-local FIN_ARCH_H = 20
-local FIN_RED    = Color3.fromRGB(255, 50, 80)
-local FIN_YEL    = Color3.fromRGB(255, 220, 40)
+local pbPushCooldown = {}   -- hors do-end : utilisé dans PlayerRemoving ci-dessous
+do  -- bloc do-end : libère ~11 registres locaux dans le chunk principal
+    local PB_BALL_D    = 4
+    local PB_POLE_W    = 1.2
+    local PB_POLE_H    = 8
+    local PB_X_MIN     = -(S4_TOTAL_W/2 - 2)
+    local PB_X_MAX     =  (S4_TOTAL_W/2 - 2)
+    local PB_BALL_COLORS = {
+        Color3.fromRGB(220, 50,  50),
+        Color3.fromRGB(255, 140,  0),
+        Color3.fromRGB(255, 220,  0),
+        Color3.fromRGB(50,  200,  80),
+        Color3.fromRGB(50,  160, 240),
+        Color3.fromRGB(180,  60, 240),
+        Color3.fromRGB(255, 105, 180),
+        Color3.fromRGB(0,   220, 220),
+    }
+    local PB_POLE_CLR  = Color3.fromRGB(80, 200, 120)
+    local PB_PUSH      = 45
+    local pbDefs = {
+        { z = WAIT_Z + 12, dir =  1, speed = 16, startX = PB_X_MIN },
+        { z = WAIT_Z + 42, dir = -1, speed = 20, startX = PB_X_MAX },
+        { z = WAIT_Z + 72, dir =  1, speed = 18, startX = PB_X_MIN },
+        { z = WAIT_Z + 102,dir = -1, speed = 22, startX = PB_X_MAX },
+    }
+    local pbData = {}
 
-local CHECK_W = 6
-local nCX = math.floor(S4_TOTAL_W / CHECK_W)
-local nCZ = math.floor(FIN_PLAT_D  / CHECK_W)
-for col = 0, nCX - 1 do
-    for row = 0, nCZ - 1 do
-        mkPart(string.format("FinCheck_%d_%d", col, row),
-            Vector3.new(CHECK_W, WAIT_PLAT_H, CHECK_W),
-            CFrame.new(
-                -S4_TOTAL_W/2 + col * CHECK_W + CHECK_W/2,
-                PLAT3_Y - WAIT_PLAT_H / 2,
-                FIN_Z + row * CHECK_W + CHECK_W/2),
-            ((col + row) % 2 == 0)
-                and Color3.fromRGB(20, 20, 20)
-                or  Color3.fromRGB(240, 240, 240))
+    local function pushPlayerPB(hit, entry)
+        local char = hit.Parent
+        if not char then return end
+        local hum = char:FindFirstChildOfClass("Humanoid")
+        if not hum or hum.Health <= 0 then return end
+        local hrp = char:FindFirstChild("HumanoidRootPart")
+        if not hrp then return end
+        local player = Players:GetPlayerFromCharacter(char)
+        if not player then return end
+        local now = tick()
+        if pbPushCooldown[player.UserId] and now - pbPushCooldown[player.UserId] < 0.3 then return end
+        pbPushCooldown[player.UserId] = now
+        local ballPos = Vector3.new(entry.x, hrp.Position.Y, entry.cz)
+        local dir = (hrp.Position - ballPos)
+        if dir.Magnitude < 0.1 then dir = Vector3.new(1, 0, 0) end
+        dir = dir.Unit
+        local bv = Instance.new("BodyVelocity")
+        bv.Velocity  = Vector3.new(dir.X * PB_PUSH, 22, dir.Z * PB_PUSH)
+        bv.MaxForce  = Vector3.new(1e5, 1e5, 1e5)
+        bv.P         = 1e4
+        bv.Parent    = hrp
+        game:GetService("Debris"):AddItem(bv, 0.2)
+    end
+
+    for i, def in ipairs(pbDefs) do
+        local entry = {
+            parts = {}, x = def.startX, dir = def.dir, speed = def.speed, cz = def.z,
+        }
+        local pole = Instance.new("Part")
+        pole.Name = "PB_Pole_" .. i
+        pole.Size = Vector3.new(PB_POLE_W, PB_POLE_H, PB_POLE_W)
+        pole.Color = PB_POLE_CLR
+        pole.Material = Enum.Material.SmoothPlastic
+        pole.Anchored = true; pole.CanCollide = true; pole.CastShadow = false
+        pole.CFrame = CFrame.new(def.startX, PLAT3_Y + PB_POLE_H / 2, def.z)
+        pole.Parent = zoneFolder
+        table.insert(entry.parts, { part = pole, y = PLAT3_Y + PB_POLE_H / 2 })
+        local ballYs = { PLAT3_Y + 2, PLAT3_Y + 4.5, PLAT3_Y + 7 }
+        local colorOffset = (i - 1) * 3
+        for b, by in ipairs(ballYs) do
+            local ball = Instance.new("Part")
+            ball.Name = "PB_Ball_" .. i .. "_" .. b
+            ball.Shape = Enum.PartType.Ball
+            ball.Size = Vector3.new(PB_BALL_D, PB_BALL_D, PB_BALL_D)
+            local colorIdx = ((colorOffset + b - 1) % #PB_BALL_COLORS) + 1
+            ball.Color = PB_BALL_COLORS[colorIdx]
+            ball.Material = Enum.Material.SmoothPlastic
+            ball.Anchored = true; ball.CanCollide = true; ball.CastShadow = false
+            ball.CFrame = CFrame.new(def.startX, by, def.z)
+            ball.Parent = zoneFolder
+            ball.Touched:Connect(function(hit) pushPlayerPB(hit, entry) end)
+            table.insert(entry.parts, { part = ball, y = by })
+        end
+        table.insert(pbData, entry)
+    end
+
+    RunService.Heartbeat:Connect(function(dt)
+        for _, pb in ipairs(pbData) do
+            pb.x += pb.dir * pb.speed * dt
+            if pb.x >= PB_X_MAX then pb.x = PB_X_MAX; pb.dir = -1
+            elseif pb.x <= PB_X_MIN then pb.x = PB_X_MIN; pb.dir = 1 end
+            for _, item in ipairs(pb.parts) do
+                item.part.CFrame = CFrame.new(pb.x, item.y, pb.cz)
+            end
+        end
+    end)
+end  -- fin bloc PB
+
+-- Nettoyage cooldown quand un joueur quitte
+Players.PlayerRemoving:Connect(function(player)
+    pbPushCooldown[player.UserId] = nil
+end)
+
+-- ============================================================
+-- DEUX VOIES : MURS À TROU ROTATIFS
+-- ============================================================
+do  -- bloc do-end DEUX VOIES : libère ~26 registres locaux
+local SPLIT_Z  = WAIT_Z + WAIT_PLAT_D
+local PATH_W   = 24      -- largeur de chaque voie
+local PATH_GAP = 30      -- grand espace vide central
+local PATH_D   = 90      -- longueur des voies
+-- Total = 24+30+24 = 78 = S4_TOTAL_W → remplit pile la largeur
+local PATH_X_L = -(PATH_W/2 + PATH_GAP/2)   -- = -27
+local PATH_X_R =  (PATH_W/2 + PATH_GAP/2)   -- = +27
+
+-- Plateformes
+mkPart("PathLeft",
+    Vector3.new(PATH_W, WAIT_PLAT_H, PATH_D),
+    CFrame.new(PATH_X_L, PLAT3_Y - WAIT_PLAT_H/2, SPLIT_Z + PATH_D/2),
+    Color3.fromRGB(255, 215, 80))
+mkPart("PathRight",
+    Vector3.new(PATH_W, WAIT_PLAT_H, PATH_D),
+    CFrame.new(PATH_X_R, PLAT3_Y - WAIT_PLAT_H/2, SPLIT_Z + PATH_D/2),
+    Color3.fromRGB(255, 215, 80))
+
+-- Barrières extérieures (empêchent de tomber côté outside)
+local BARRIER_H = 8
+local BARRIER_T = 2
+for _, cfg in ipairs({
+    { cx = PATH_X_L, sign = -1, label = "L" },
+    { cx = PATH_X_R, sign =  1, label = "R" },
+}) do
+    local bx = cfg.cx + cfg.sign * (PATH_W/2 + BARRIER_T/2)
+    mkPart("PathBarrier_" .. cfg.label,
+        Vector3.new(BARRIER_T, BARRIER_H, PATH_D),
+        CFrame.new(bx, PLAT3_Y + BARRIER_H/2, SPLIT_Z + PATH_D/2),
+        Color3.fromRGB(255, 190, 80))
+end
+
+-- ── Murs à trou rotatifs ─────────────────────────────────
+-- Le mur tourne autour de l'axe Z (direction du parcours).
+-- Le trou est en bas (au niveau du sol) → quand le trou est face au joueur il peut passer.
+local RWALL_H      = 10
+local RWALL_T      = 1.5
+local RWALL_HOLE_H = 6      -- hauteur du trou (commence au sol)
+local RWALL_HOLE_W = 8      -- largeur du trou (centré sur la voie)
+local RWALL_CLR_A  = Color3.fromRGB(210, 50, 180)   -- magenta
+local RWALL_CLR_B  = Color3.fromRGB(255, 90, 60)    -- rouge-orange
+
+-- Géométrie des 3 parties du cadre (relative au pivot)
+-- Pivot en world = (cx, PLAT3_Y + RWALL_H/2, wallZ)
+local RW_SIDE_W    = (PATH_W - RWALL_HOLE_W) / 2    -- 8  (chaque côté)
+local RW_TOP_H     = RWALL_H - RWALL_HOLE_H          -- 4  (partie haute)
+local RW_PIVOT_DY  = RWALL_H / 2                     -- offset Y pivot au-dessus du sol
+
+local RW_TOP_RELY  = -RWALL_H/2 + RWALL_HOLE_H + RW_TOP_H/2  -- = +3
+local RW_SIDE_RELY = -RWALL_H/2 + RWALL_HOLE_H/2              -- = -2
+local RW_L_RELX    = -(RWALL_HOLE_W/2 + RW_SIDE_W/2)          -- = -8
+local RW_R_RELX    =  (RWALL_HOLE_W/2 + RW_SIDE_W/2)          -- = +8
+
+local rWallStations = {
+    { zOff = 18, speed =  1.6, phase = 0            },
+    { zOff = 48, speed =  2.2, phase = math.pi/2    },
+    { zOff = 72, speed =  1.4, phase = math.pi      },
+}
+local rWallData = {}
+
+local function makeRWP(name, size, color)
+    local p = Instance.new("Part")
+    p.Name = name; p.Size = size; p.Color = color
+    p.Material = Enum.Material.SmoothPlastic
+    p.Anchored = true; p.CanCollide = true; p.CastShadow = false
+    p.Parent = zoneFolder
+    return p
+end
+
+for pathIdx, cx in ipairs({ PATH_X_L, PATH_X_R }) do
+    for si, def in ipairs(rWallStations) do
+        local wz    = SPLIT_Z + def.zOff
+        local color = (si % 2 == 0) and RWALL_CLR_B or RWALL_CLR_A
+        local entry = {
+            parts  = {},
+            angle  = def.phase,
+            speed  = def.speed,
+            pivotY = PLAT3_Y + RW_PIVOT_DY,
+            cx     = cx,
+            cz     = wz,
+        }
+
+        local top   = makeRWP("RW_Top_"   ..pathIdx.."_"..si, Vector3.new(PATH_W,   RW_TOP_H,    RWALL_T), color)
+        local left  = makeRWP("RW_Left_"  ..pathIdx.."_"..si, Vector3.new(RW_SIDE_W, RWALL_HOLE_H, RWALL_T), color)
+        local right = makeRWP("RW_Right_" ..pathIdx.."_"..si, Vector3.new(RW_SIDE_W, RWALL_HOLE_H, RWALL_T), color)
+
+        table.insert(entry.parts, { part = top,   relX = 0,         relY = RW_TOP_RELY  })
+        table.insert(entry.parts, { part = left,  relX = RW_L_RELX, relY = RW_SIDE_RELY })
+        table.insert(entry.parts, { part = right, relX = RW_R_RELX, relY = RW_SIDE_RELY })
+
+        table.insert(rWallData, entry)
     end
 end
 
-local pillarX = S4_TOTAL_W / 2 + 2
-for _, sx in ipairs({-pillarX, pillarX}) do
-    mkPart("FinPillar_" .. (sx < 0 and "L" or "R"),
-        Vector3.new(4, FIN_ARCH_H, 4),
-        CFrame.new(sx, PLAT3_Y + FIN_ARCH_H / 2, FIN_Z),
-        FIN_RED)
-end
+-- Plateforme de réunion après les deux voies
+local MERGE_Z = SPLIT_Z + PATH_D
+local MERGE_D = 40
+mkPart("MergePlatform",
+    Vector3.new(S4_TOTAL_W, WAIT_PLAT_H, MERGE_D),
+    CFrame.new(ZONE_X, PLAT3_Y - WAIT_PLAT_H/2, MERGE_Z + MERGE_D/2),
+    Color3.fromRGB(200, 240, 255))
 
-local BAR_W    = S4_TOTAL_W + 8
-local STRIPE_W = 6
-local nStripes = math.floor(BAR_W / STRIPE_W)
-for si = 0, nStripes - 1 do
-    mkPart("FinStripe_" .. si,
-        Vector3.new(STRIPE_W, 4, 4),
-        CFrame.new(-BAR_W/2 + si * STRIPE_W + STRIPE_W/2, PLAT3_Y + FIN_ARCH_H + 2, FIN_Z),
-        (si % 2 == 0) and FIN_RED or FIN_YEL)
-end
-
-for _, sx in ipairs({-pillarX, pillarX}) do
-    local ball = Instance.new("Part")
-    ball.Name       = "FinBall_" .. (sx < 0 and "L" or "R")
-    ball.Shape      = Enum.PartType.Ball
-    ball.Size       = Vector3.new(6, 6, 6)
-    ball.Color      = FIN_YEL
-    ball.Material   = Enum.Material.SmoothPlastic
-    ball.Anchored   = true
-    ball.CastShadow = false
-    ball.Parent     = zoneFolder
-    ball.CFrame     = CFrame.new(sx, PLAT3_Y + FIN_ARCH_H + 5, FIN_Z)
-end
-
-local FIN_WALL_H = 8
-mkPart("FinWall_L",
-    Vector3.new(2, FIN_WALL_H, FIN_PLAT_D),
-    CFrame.new(-S4_TOTAL_W/2 - 1, PLAT3_Y + FIN_WALL_H/2, FIN_Z + FIN_PLAT_D/2),
-    FIN_RED)
-mkPart("FinWall_R",
-    Vector3.new(2, FIN_WALL_H, FIN_PLAT_D),
-    CFrame.new( S4_TOTAL_W/2 + 1, PLAT3_Y + FIN_WALL_H/2, FIN_Z + FIN_PLAT_D/2),
-    FIN_RED)
-mkPart("FinWall_Back",
-    Vector3.new(S4_TOTAL_W + 4, FIN_WALL_H, 2),
-    CFrame.new(ZONE_X, PLAT3_Y + FIN_WALL_H/2, FIN_Z + FIN_PLAT_D + 1),
-    FIN_RED)
-
-local LOBBY_SPAWN = CFrame.new(ZONE_X, BASE_Y + SPAWN_ELEV + 4, ZONE_Z)
-
-local finDetector = Instance.new("Part")
-finDetector.Name         = "FinishDetector"
-finDetector.Size         = Vector3.new(S4_TOTAL_W, 10, 2)
-finDetector.CFrame       = CFrame.new(ZONE_X, PLAT3_Y + 5, FIN_Z + FIN_PLAT_D - 1)
-finDetector.Anchored     = true
-finDetector.CanCollide   = false
-finDetector.Transparency = 1
-finDetector.Parent       = zoneFolder
-
-local finishedPlayers = {}
-finDetector.Touched:Connect(function(hit)
-    local char   = hit.Parent
-    local player = Players:GetPlayerFromCharacter(char)
-    if not player or finishedPlayers[player] then return end
-    finishedPlayers[player] = true
-    print(string.format("[Finish] ✅ %s est qualifié !", player.Name))
-    task.delay(0.6, function()
-        local c = player.Character
-        if not c then return end
-        local root = c:FindFirstChild("HumanoidRootPart")
-        if root then root.CFrame = LOBBY_SPAWN end
-    end)
+-- ============================================================
+-- HEARTBEAT : MURS ROTATIFS (upvalue : rWallData)
+-- ============================================================
+RunService.Heartbeat:Connect(function(dt)
+    for _, rw in ipairs(rWallData) do
+        rw.angle += rw.speed * dt
+        local pivotCF = CFrame.new(rw.cx, rw.pivotY, rw.cz) * CFrame.Angles(0, 0, rw.angle)
+        for _, item in ipairs(rw.parts) do
+            item.part.CFrame = pivotCF * CFrame.new(item.relX, item.relY, 0)
+        end
+    end
 end)
 
-print(string.format("[Manche 1] ✅ Rampe | %d canons | S3 | S4 | Finish — PLAT_Y=%d",
+-- ============================================================
+-- TP (touche Y → murs rotatifs voies) — upvalues : PATH_X_L, PLAT3_Y, SPLIT_Z
+-- ============================================================
+local FINISH_SPAWN = CFrame.new(PATH_X_L, PLAT3_Y + 4, SPLIT_Z + 5)
+
+local ok, reTeleport = pcall(function()
+    return game.ReplicatedStorage:WaitForChild("Events", 10)
+               :WaitForChild("TeleportToFinish", 10)
+end)
+
+if not ok or not reTeleport then
+    warn("[FinishLineTest] RemoteEvent TeleportToFinish introuvable !")
+else
+    reTeleport.OnServerEvent:Connect(function(player)
+        local char = player.Character
+        if not char then return end
+        local root = char:FindFirstChild("HumanoidRootPart")
+        if root then root.CFrame = FINISH_SPAWN end
+    end)
+    print("[Manche 1] ✅ Prêt | [Y] = TP murs rotatifs | mort = respawn bas de rampe")
+end
+end  -- fin bloc do-end DEUX VOIES
+
+print(string.format("[Manche 1] ✅ Rampe | %d canons | S3 | S4 | Voies rotatifs — PLAT_Y=%d",
     #LANE_X, PLAT_Y_SURF))
 
 -- ============================================================
 -- CHECKPOINT (plateforme haute)
 -- ============================================================
-local checkpointRespawn = {}
-
 local CP_CF  = CFrame.new(ZONE_X, PLAT_Y_SURF + 4, PLAT_START_Z + 5)
 local cpPart = Instance.new("Part")
 cpPart.Name         = "Checkpoint_1"
@@ -752,39 +933,6 @@ cpPart.Touched:Connect(function(hit)
     local player = Players:GetPlayerFromCharacter(char)
     if player and not checkpointRespawn[player] then
         checkpointRespawn[player] = CP_CF
-    end
-end)
-
-Players.PlayerRemoving:Connect(function(player)
-    checkpointRespawn[player] = nil
-    finishedPlayers[player]   = nil
-end)
-
--- ============================================================
--- RESPAWN
--- ============================================================
-local function bindRespawn(player)
-    player.CharacterAdded:Connect(function(char)
-        local root = char:WaitForChild("HumanoidRootPart", 5)
-        if root then
-            task.wait(0.15)
-            root.CFrame = checkpointRespawn[player] or RAMP_RESPAWN
-        end
-    end)
-end
-
-Players.PlayerAdded:Connect(function(player) bindRespawn(player) end)
-for _, player in ipairs(Players:GetPlayers()) do bindRespawn(player) end
-
-task.spawn(function()
-    task.wait(0.8)
-    for _, player in ipairs(Players:GetPlayers()) do
-        local char = player.Character
-        if not char then continue end
-        local root = char:FindFirstChild("HumanoidRootPart")
-        if root then
-            root.CFrame = checkpointRespawn[player] or RAMP_RESPAWN
-        end
     end
 end)
 
@@ -1063,24 +1211,4 @@ RunService.Heartbeat:Connect(function(dt)
     end
 end)
 
--- ============================================================
--- TP (touche Y → avant les murs S4)
--- ============================================================
-local FINISH_SPAWN = CFrame.new(ZONE_X, PLAT3_Y + 4, S4_Z + 5)
 
-local ok, reTeleport = pcall(function()
-    return game.ReplicatedStorage:WaitForChild("Events", 10)
-               :WaitForChild("TeleportToFinish", 10)
-end)
-
-if not ok or not reTeleport then
-    warn("[FinishLineTest] RemoteEvent TeleportToFinish introuvable !")
-else
-    reTeleport.OnServerEvent:Connect(function(player)
-        local char = player.Character
-        if not char then return end
-        local root = char:FindFirstChild("HumanoidRootPart")
-        if root then root.CFrame = FINISH_SPAWN end
-    end)
-    print("[Manche 1] ✅ Prêt | [Y] = TP murs S4 | mort = respawn bas de rampe")
-end
