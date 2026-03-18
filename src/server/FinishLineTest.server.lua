@@ -806,31 +806,39 @@ for _, cfg in ipairs({
         Color3.fromRGB(255, 190, 80))
 end
 
--- ── Murs à trou rotatifs ─────────────────────────────────
--- Le mur tourne autour de l'axe Z (direction du parcours).
--- Le trou est en bas (au niveau du sol) → quand le trou est face au joueur il peut passer.
-local RWALL_H      = 10
-local RWALL_T      = 1.5
-local RWALL_HOLE_H = 6      -- hauteur du trou (commence au sol)
-local RWALL_HOLE_W = 8      -- largeur du trou (centré sur la voie)
-local RWALL_CLR_A  = Color3.fromRGB(210, 50, 180)   -- magenta
-local RWALL_CLR_B  = Color3.fromRGB(255, 90, 60)    -- rouge-orange
+-- ── Murs à fenêtre rotatifs ──────────────────────────────
+-- Cadre compact (18 < PATH_W=24) qui tourne autour de l'axe Z.
+-- La fenêtre (bas du cadre, angle=0) balaie en cercle.
+-- Joueur passe quand la fenêtre est face au sol ; bloqué sinon.
+--
+-- Vue de face (angle = 0, fenêtre en bas) :
+--   ┌──────────────────┐  ← barre haute (RW_TOP_H)
+--   ├────┬──────────┬────┤
+--   │    │  FENÊTRE │    │  ← piliers gauche / droit
+--   │    │  7 × 7   │    │
+--   └────┴──────────┴────┘ ← sol (PLAT3_Y)
 
--- Géométrie des 3 parties du cadre (relative au pivot)
--- Pivot en world = (cx, PLAT3_Y + RWALL_H/2, wallZ)
-local RW_SIDE_W    = (PATH_W - RWALL_HOLE_W) / 2    -- 8  (chaque côté)
-local RW_TOP_H     = RWALL_H - RWALL_HOLE_H          -- 4  (partie haute)
-local RW_PIVOT_DY  = RWALL_H / 2                     -- offset Y pivot au-dessus du sol
+local RW_W     = 18    -- largeur du cadre (< PATH_W : réduit le clipping en rotation)
+local RW_H     = 10    -- hauteur totale du cadre
+local RW_WIN_W =  7    -- largeur de la fenêtre
+local RW_WIN_H =  7    -- hauteur de la fenêtre (joueur ~5 studs → passe bien)
+local RW_T     =  1.5  -- épaisseur
+local RW_CLR_A = Color3.fromRGB(210,  50, 180)   -- magenta
+local RW_CLR_B = Color3.fromRGB(255,  90,  60)   -- rouge-orange
 
-local RW_TOP_RELY  = -RWALL_H/2 + RWALL_HOLE_H + RW_TOP_H/2  -- = +3
-local RW_SIDE_RELY = -RWALL_H/2 + RWALL_HOLE_H/2              -- = -2
-local RW_L_RELX    = -(RWALL_HOLE_W/2 + RW_SIDE_W/2)          -- = -8
-local RW_R_RELX    =  (RWALL_HOLE_W/2 + RW_SIDE_W/2)          -- = +8
+-- Géométrie relative au pivot (centre du cadre en world)
+-- Pivot world = (cx,  PLAT3_Y + RW_H/2,  wallZ)
+local RW_TOP_H  = RW_H - RW_WIN_H                    -- 3
+local RW_SIDE_W = (RW_W - RW_WIN_W) / 2              -- 5.5
+local RW_TOP_RY = -RW_H/2 + RW_WIN_H + RW_TOP_H/2   -- -5+7+1.5 = +3.5
+local RW_SIDE_RY= -RW_H/2 + RW_WIN_H/2               -- -5+3.5   = -1.5
+local RW_L_RX   = -(RW_WIN_W/2 + RW_SIDE_W/2)        -- -(3.5+2.75) = -6.25
+local RW_R_RX   =  (RW_WIN_W/2 + RW_SIDE_W/2)        -- +6.25
 
 local rWallStations = {
-    { zOff = 18, speed =  1.6, phase = 0            },
-    { zOff = 48, speed =  2.2, phase = math.pi/2    },
-    { zOff = 72, speed =  1.4, phase = math.pi      },
+    { zOff = 20, speed = 1.0, phase = 0          },  -- lent
+    { zOff = 50, speed = 1.5, phase = math.pi/3  },  -- moyen (déphasé)
+    { zOff = 76, speed = 0.8, phase = math.pi    },  -- très lent (retardé)
 }
 local rWallData = {}
 
@@ -846,23 +854,25 @@ end
 for pathIdx, cx in ipairs({ PATH_X_L, PATH_X_R }) do
     for si, def in ipairs(rWallStations) do
         local wz    = SPLIT_Z + def.zOff
-        local color = (si % 2 == 0) and RWALL_CLR_B or RWALL_CLR_A
+        local color = (si % 2 == 0) and RW_CLR_B or RW_CLR_A
         local entry = {
             parts  = {},
             angle  = def.phase,
             speed  = def.speed,
-            pivotY = PLAT3_Y + RW_PIVOT_DY,
+            pivotY = PLAT3_Y + RW_H / 2,
             cx     = cx,
             cz     = wz,
         }
 
-        local top   = makeRWP("RW_Top_"   ..pathIdx.."_"..si, Vector3.new(PATH_W,   RW_TOP_H,    RWALL_T), color)
-        local left  = makeRWP("RW_Left_"  ..pathIdx.."_"..si, Vector3.new(RW_SIDE_W, RWALL_HOLE_H, RWALL_T), color)
-        local right = makeRWP("RW_Right_" ..pathIdx.."_"..si, Vector3.new(RW_SIDE_W, RWALL_HOLE_H, RWALL_T), color)
+        -- 3 parties : barre haute + pilier gauche + pilier droit
+        -- La fenêtre est l'espace libre entre les piliers (en bas du cadre)
+        local top   = makeRWP("RW_Top_"  ..pathIdx.."_"..si, Vector3.new(RW_W,      RW_TOP_H, RW_T), color)
+        local left  = makeRWP("RW_Left_" ..pathIdx.."_"..si, Vector3.new(RW_SIDE_W, RW_WIN_H, RW_T), color)
+        local right = makeRWP("RW_Right_"..pathIdx.."_"..si, Vector3.new(RW_SIDE_W, RW_WIN_H, RW_T), color)
 
-        table.insert(entry.parts, { part = top,   relX = 0,         relY = RW_TOP_RELY  })
-        table.insert(entry.parts, { part = left,  relX = RW_L_RELX, relY = RW_SIDE_RELY })
-        table.insert(entry.parts, { part = right, relX = RW_R_RELX, relY = RW_SIDE_RELY })
+        table.insert(entry.parts, { part = top,   relX = 0,      relY = RW_TOP_RY  })
+        table.insert(entry.parts, { part = left,  relX = RW_L_RX, relY = RW_SIDE_RY })
+        table.insert(entry.parts, { part = right, relX = RW_R_RX, relY = RW_SIDE_RY })
 
         table.insert(rWallData, entry)
     end
