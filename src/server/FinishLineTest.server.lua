@@ -806,39 +806,34 @@ for _, cfg in ipairs({
         Color3.fromRGB(255, 190, 80))
 end
 
--- ── Murs à fenêtre rotatifs ──────────────────────────────
--- Cadre compact (18 < PATH_W=24) qui tourne autour de l'axe Z.
--- La fenêtre (bas du cadre, angle=0) balaie en cercle.
--- Joueur passe quand la fenêtre est face au sol ; bloqué sinon.
+-- ── HÉLICE : bras tournant autour de l'axe Y ────────────
+-- Deux bras opposés (pales d'hélicoptère) qui balaient la voie
+-- horizontalement. Pivot = axe vertical au centre.
 --
--- Vue de face (angle = 0, fenêtre en bas) :
---   ┌──────────────────┐  ← barre haute (RW_TOP_H)
---   ├────┬──────────┬────┤
---   │    │  FENÊTRE │    │  ← piliers gauche / droit
---   │    │  7 × 7   │    │
---   └────┴──────────┴────┘ ← sol (PLAT3_Y)
+-- Vue de dessus (angle = 0, bras face au joueur) :
+--
+--         ← bras G →  [fenêtre]  ← bras D →
+--   ══════════════════╋══════════════════════
+--                   pivot (Y)
+--
+-- Angle=0   → bras perpendiculaires au chemin → bloquant (passe par la fenêtre)
+-- Angle=π/2 → bras parallèles au chemin → dégagé (peut courir autour)
 
-local RW_W     = 18    -- largeur du cadre (< PATH_W : réduit le clipping en rotation)
-local RW_H     = 10    -- hauteur totale du cadre
-local RW_WIN_W =  7    -- largeur de la fenêtre
-local RW_WIN_H =  7    -- hauteur de la fenêtre (joueur ~5 studs → passe bien)
-local RW_T     =  1.5  -- épaisseur
-local RW_CLR_A = Color3.fromRGB(210,  50, 180)   -- magenta
-local RW_CLR_B = Color3.fromRGB(255,  90,  60)   -- rouge-orange
+local HELI_WIN_W =  6    -- fenêtre centrale (entre les deux bras)
+local HELI_HALF  = (PATH_W - HELI_WIN_W) / 2  -- longueur d'un bras = 9
+local HELI_H     =  6    -- hauteur des bras (bloque le joueur ~5 studs)
+local HELI_T     =  2.5  -- épaisseur (Z) : visible même quand le bras est de côté
+local HELI_CLR_A = Color3.fromRGB(210,  50, 180)   -- magenta
+local HELI_CLR_B = Color3.fromRGB(255,  90,  60)   -- rouge-orange
 
--- Géométrie relative au pivot (centre du cadre en world)
--- Pivot world = (cx,  PLAT3_Y + RW_H/2,  wallZ)
-local RW_TOP_H  = RW_H - RW_WIN_H                    -- 3
-local RW_SIDE_W = (RW_W - RW_WIN_W) / 2              -- 5.5
-local RW_TOP_RY = -RW_H/2 + RW_WIN_H + RW_TOP_H/2   -- -5+7+1.5 = +3.5
-local RW_SIDE_RY= -RW_H/2 + RW_WIN_H/2               -- -5+3.5   = -1.5
-local RW_L_RX   = -(RW_WIN_W/2 + RW_SIDE_W/2)        -- -(3.5+2.75) = -6.25
-local RW_R_RX   =  (RW_WIN_W/2 + RW_SIDE_W/2)        -- +6.25
+-- relX centres des bras par rapport au pivot
+local HELI_L_RX = -(HELI_WIN_W/2 + HELI_HALF/2)   -- -(3 + 4.5) = -7.5
+local HELI_R_RX =  (HELI_WIN_W/2 + HELI_HALF/2)   -- +7.5
 
 local rWallStations = {
     { zOff = 20, speed = 1.0, phase = 0          },  -- lent
     { zOff = 50, speed = 1.5, phase = math.pi/3  },  -- moyen (déphasé)
-    { zOff = 76, speed = 0.8, phase = math.pi    },  -- très lent (retardé)
+    { zOff = 76, speed = 0.8, phase = math.pi    },  -- très lent
 }
 local rWallData = {}
 
@@ -854,25 +849,24 @@ end
 for pathIdx, cx in ipairs({ PATH_X_L, PATH_X_R }) do
     for si, def in ipairs(rWallStations) do
         local wz    = SPLIT_Z + def.zOff
-        local color = (si % 2 == 0) and RW_CLR_B or RW_CLR_A
+        local color = (si % 2 == 0) and HELI_CLR_B or HELI_CLR_A
         local entry = {
             parts  = {},
             angle  = def.phase,
             speed  = def.speed,
-            pivotY = PLAT3_Y + RW_H / 2,
+            -- pivot au milieu de la hauteur → bras part du sol jusqu'à HELI_H
+            pivotY = PLAT3_Y + HELI_H / 2,
             cx     = cx,
             cz     = wz,
         }
 
-        -- 3 parties : barre haute + pilier gauche + pilier droit
-        -- La fenêtre est l'espace libre entre les piliers (en bas du cadre)
-        local top   = makeRWP("RW_Top_"  ..pathIdx.."_"..si, Vector3.new(RW_W,      RW_TOP_H, RW_T), color)
-        local left  = makeRWP("RW_Left_" ..pathIdx.."_"..si, Vector3.new(RW_SIDE_W, RW_WIN_H, RW_T), color)
-        local right = makeRWP("RW_Right_"..pathIdx.."_"..si, Vector3.new(RW_SIDE_W, RW_WIN_H, RW_T), color)
+        -- Deux bras opposés (gauche / droit du pivot)
+        -- relY = 0 → centrés verticalement sur le pivot
+        local left  = makeRWP("HELI_L_"..pathIdx.."_"..si, Vector3.new(HELI_HALF, HELI_H, HELI_T), color)
+        local right = makeRWP("HELI_R_"..pathIdx.."_"..si, Vector3.new(HELI_HALF, HELI_H, HELI_T), color)
 
-        table.insert(entry.parts, { part = top,   relX = 0,      relY = RW_TOP_RY  })
-        table.insert(entry.parts, { part = left,  relX = RW_L_RX, relY = RW_SIDE_RY })
-        table.insert(entry.parts, { part = right, relX = RW_R_RX, relY = RW_SIDE_RY })
+        table.insert(entry.parts, { part = left,  relX = HELI_L_RX, relY = 0 })
+        table.insert(entry.parts, { part = right, relX = HELI_R_RX, relY = 0 })
 
         table.insert(rWallData, entry)
     end
@@ -892,7 +886,7 @@ mkPart("MergePlatform",
 RunService.Heartbeat:Connect(function(dt)
     for _, rw in ipairs(rWallData) do
         rw.angle += rw.speed * dt
-        local pivotCF = CFrame.new(rw.cx, rw.pivotY, rw.cz) * CFrame.Angles(0, 0, rw.angle)
+        local pivotCF = CFrame.new(rw.cx, rw.pivotY, rw.cz) * CFrame.Angles(0, rw.angle, 0)
         for _, item in ipairs(rw.parts) do
             item.part.CFrame = pivotCF * CFrame.new(item.relX, item.relY, 0)
         end
