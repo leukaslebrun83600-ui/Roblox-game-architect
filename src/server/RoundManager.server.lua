@@ -31,9 +31,11 @@ local roundNumber       = 0    -- numéro de la manche dans le tournoi en cours
 -- Z de départ par identifiant de course (doit correspondre aux constantes MapBuilder)
 local COURSE_START_Z_BY_COURSE = { [1] = 200, [2] = 5000, [3] = 10000 }
 -- Mapping manche → identifiant de course
-local ROUND_COURSE = { [1] = 1, [2] = 2, [3] = 3 }
--- Type de round : "course" (linéaire), "cylinder" (survie), "star" (finale étoile)
-local ROUND_TYPE   = { [1] = "course", [2] = "cylinder", [3] = "star" }
+-- ⚠ Pour l'instant toutes les manches utilisent le Parcours 1.
+-- À mettre à jour quand Course2 et Course3 seront construits.
+local ROUND_COURSE = { [1] = 1, [2] = 1, [3] = 1 }
+-- Type de round : "course" pour toutes les manches (cylinder/star non encore construits)
+local ROUND_TYPE   = { [1] = "course", [2] = "course", [3] = "course" }
 
 local currentRoundType = "course"   -- mis à jour au début de chaque manche
 local endCylinderRound              -- forward declaration (défini plus bas)
@@ -953,6 +955,7 @@ end
 local function mainLoop()
     setupArrivalZone()
     setState("LOBBY", {})
+    task.wait(3)   -- laisse le temps aux clients de connecter leurs handlers RemoteEvent
 
     while true do
         -- Attente du minimum de joueurs

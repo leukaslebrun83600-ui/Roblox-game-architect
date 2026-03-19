@@ -276,26 +276,39 @@ end
 -- ============================================================
 
 local function buildWaitingScreen()
-    -- Bandeau compact non-intrusif en haut au centre (affiché pendant WAITING)
-    -- Le lobby reste entièrement visible et interactif derrière
-    local banner = make("Frame", hudGui, {
+    -- Overlay centré, placé dans notifGui pour garantir le rendu au premier plan
+    local overlay = make("Frame", notifGui, {
         Name                   = "WaitingBanner",
-        Size                   = UDim2.new(0, 260, 0, 46),
-        Position               = UDim2.new(0.5, -130, 0, 10),
-        BackgroundColor3       = Color3.fromRGB(15, 15, 25),
-        BackgroundTransparency = 0.35,
+        Size                   = UDim2.new(0, 480, 0, 160),
+        Position               = UDim2.new(0.5, -240, 0.38, -80),
+        BackgroundColor3       = Color3.fromRGB(10, 10, 20),
+        BackgroundTransparency = 0.15,
         BorderSizePixel        = 0,
         Visible                = false,
     })
-    make("UICorner", banner, { CornerRadius = UDim.new(0, 8) })
-    ui.waitingBanner = banner
+    make("UICorner", overlay, { CornerRadius = UDim.new(0, 16) })
+    ui.waitingBanner = overlay
 
-    ui.waitingCountdown = make("TextLabel", banner, {
-        Size = UDim2.new(1, -10, 1, 0), Position = UDim2.new(0, 5, 0, 0),
+    -- Ligne du haut : label de la manche
+    ui.waitingRoundLabel = make("TextLabel", overlay, {
+        Size                   = UDim2.new(1, -20, 0, 52),
+        Position               = UDim2.new(0, 10, 0, 8),
         BackgroundTransparency = 1,
-        Text = "Manche dans 30s",
-        TextColor3 = Color3.fromRGB(255, 215, 0),
-        Font = Enum.Font.GothamBold, TextScaled = true,
+        Text                   = "MANCHE 1 — PARCOURS 1",
+        TextColor3             = Color3.fromRGB(255, 215, 0),
+        Font                   = Enum.Font.GothamBold,
+        TextScaled             = true,
+    })
+
+    -- Ligne du bas : compte à rebours en grand
+    ui.waitingCountdown = make("TextLabel", overlay, {
+        Size                   = UDim2.new(1, -20, 0, 80),
+        Position               = UDim2.new(0, 10, 0, 68),
+        BackgroundTransparency = 1,
+        Text                   = "5",
+        TextColor3             = Color3.fromRGB(255, 255, 255),
+        Font                   = Enum.Font.GothamBold,
+        TextScaled             = true,
     })
 end
 
@@ -896,9 +909,13 @@ local function onStateChanged(payload)
             ui.waitingBanner.Visible = true
         end
         if data.countdown then
-            local label = data.label and string.format(" — %s", data.label) or ""
-            ui.waitingCountdown.Text = string.format("Manche %d%s  |  %ds",
-                data.round or 1, label, data.countdown)
+            local label = data.label or "Parcours"
+            ui.waitingRoundLabel.Text = string.format("MANCHE %d — %s", data.round or 1, string.upper(label))
+            ui.waitingCountdown.Text  = tostring(data.countdown)
+            -- Rouge sur les 3 dernières secondes
+            ui.waitingCountdown.TextColor3 = data.countdown <= 3
+                and Color3.fromRGB(255, 60, 60)
+                or  Color3.fromRGB(255, 255, 255)
         end
 
     elseif newState == "ACTIVE" then
@@ -930,7 +947,10 @@ end
 -- CONNEXION AUX REMOTE EVENTS
 -- ============================================================
 
-reRoundState.OnClientEvent:Connect(onStateChanged)
+reRoundState.OnClientEvent:Connect(function(payload)
+    print("[UIController] RoundState reçu :", payload and payload.state, "| countdown:", payload and payload.data and payload.data.countdown)
+    onStateChanged(payload)
+end)
 
 reUpdatePos.OnClientEvent:Connect(function(payload)
     if type(payload) ~= "table" then return end

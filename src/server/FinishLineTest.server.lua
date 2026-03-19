@@ -1,8 +1,9 @@
 -- FinishLineTest.server.lua
 -- Parcours complet : Spawn → Rampe + Canons → Plateforme haute → Poutres → S3 Cylindres → Murs → Arrivée
 
-local Players    = game:GetService("Players")
-local RunService = game:GetService("RunService")
+local Players           = game:GetService("Players")
+local RunService        = game:GetService("RunService")
+local CollectionService = game:GetService("CollectionService")
 
 
 -- ============================================================
@@ -97,8 +98,12 @@ local RAMP_RESPAWN = CFrame.new(ZONE_X, BASE_Y + 4, RAMP_START_Z - 3)
 -- ============================================================
 local checkpointRespawn = {}
 
+-- Respawn sur le parcours UNIQUEMENT si une manche est en cours.
+-- Hors manche (LOBBY / WAITING / RESULTS), Init.lua gère le spawn lobby.
 Players.PlayerAdded:Connect(function(player)
     player.CharacterAdded:Connect(function(char)
+        local roundState = _G.RoundManager and _G.RoundManager.GetState()
+        if roundState ~= "ACTIVE" then return end  -- pas en manche → lobby
         local root = char:WaitForChild("HumanoidRootPart", 5)
         if root then
             task.wait(0.15)
@@ -109,19 +114,6 @@ end)
 
 Players.PlayerRemoving:Connect(function(player)
     checkpointRespawn[player] = nil
-end)
-
--- Fallback : déplace les joueurs déjà chargés (cas Studio Play)
-task.spawn(function()
-    task.wait(1.0)
-    for _, player in ipairs(Players:GetPlayers()) do
-        local char = player.Character
-        if not char then continue end
-        local root = char:FindFirstChild("HumanoidRootPart")
-        if root then
-            root.CFrame = checkpointRespawn[player] or RAMP_RESPAWN
-        end
-    end
 end)
 
 -- ============================================================
@@ -144,8 +136,40 @@ end
 local _old = workspace:FindFirstChild("Manche 1")
 if _old then _old:Destroy() end
 
+-- ============================================================
+-- LOBBY — plateforme d'attente avant le parcours
+-- ============================================================
+do
+    local lf = Instance.new("Folder"); lf.Name = "Lobby"; lf.Parent = workspace
+    local sf = Instance.new("Folder"); sf.Name = "SpawnLocations"; sf.Parent = lf
+
+    -- Sol du lobby (vert, Z = -100 → 0)
+    local floor = Instance.new("Part")
+    floor.Name = "LobbyFloor"; floor.Size = Vector3.new(120, 2, 100)
+    floor.CFrame = CFrame.new(0, 9, -50)
+    floor.Anchored = true; floor.CastShadow = false
+    floor.Color = Color3.fromRGB(100, 190, 100)
+    floor.Material = Enum.Material.SmoothPlastic
+    floor.Parent = lf
+
+    -- 6 points de spawn répartis sur le sol
+    local spawnPositions = {
+        Vector3.new(-25, 10, -60), Vector3.new(0, 10, -60), Vector3.new(25, 10, -60),
+        Vector3.new(-25, 10, -40), Vector3.new(0, 10, -40), Vector3.new(25, 10, -40),
+    }
+    for i, pos in ipairs(spawnPositions) do
+        local sp = Instance.new("Part")
+        sp.Name = "Spawn_"..i; sp.Size = Vector3.new(4, 0.5, 4)
+        sp.CFrame = CFrame.new(pos); sp.Anchored = true
+        sp.Color = Color3.fromRGB(255, 255, 255); sp.Transparency = 0.5
+        sp.CastShadow = false; sp.Parent = sf
+    end
+
+    print("[TrustNoOne] ✅ Lobby créé (6 spawn points)")
+end
+
 local zoneFolder = Instance.new("Folder")
-zoneFolder.Name   = "Manche 1"
+zoneFolder.Name   = "Course"
 zoneFolder.Parent = workspace
 
 -- ============================================================
@@ -771,138 +795,101 @@ Players.PlayerRemoving:Connect(function(player)
 end)
 
 -- ============================================================
--- DEUX VOIES : MURS À TROU ROTATIFS
+-- GRILLE TOMBANTE + CHECKPOINT
 -- ============================================================
-do  -- bloc do-end DEUX VOIES : libère ~26 registres locaux
-local SPLIT_Z  = WAIT_Z + WAIT_PLAT_D
-local PATH_W   = 24      -- largeur de chaque voie
-local PATH_GAP = 30      -- grand espace vide central
-local PATH_D   = 90      -- longueur des voies
--- Total = 24+30+24 = 78 = S4_TOTAL_W → remplit pile la largeur
-local PATH_X_L = -(PATH_W/2 + PATH_GAP/2)   -- = -27
-local PATH_X_R =  (PATH_W/2 + PATH_GAP/2)   -- = +27
+do  -- bloc do-end GRILLE TOMBANTE
+local SEC_Z0  = WAIT_Z + WAIT_PLAT_D
 
--- Plateformes
-mkPart("PathLeft",
-    Vector3.new(PATH_W, WAIT_PLAT_H, PATH_D),
-    CFrame.new(PATH_X_L, PLAT3_Y - WAIT_PLAT_H/2, SPLIT_Z + PATH_D/2),
-    Color3.fromRGB(255, 215, 80))
-mkPart("PathRight",
-    Vector3.new(PATH_W, WAIT_PLAT_H, PATH_D),
-    CFrame.new(PATH_X_R, PLAT3_Y - WAIT_PLAT_H/2, SPLIT_Z + PATH_D/2),
-    Color3.fromRGB(255, 215, 80))
-
--- Barrières extérieures (empêchent de tomber côté outside)
-local BARRIER_H = 8
-local BARRIER_T = 2
-for _, cfg in ipairs({
-    { cx = PATH_X_L, sign = -1, label = "L" },
-    { cx = PATH_X_R, sign =  1, label = "R" },
-}) do
-    local bx = cfg.cx + cfg.sign * (PATH_W/2 + BARRIER_T/2)
-    mkPart("PathBarrier_" .. cfg.label,
-        Vector3.new(BARRIER_T, BARRIER_H, PATH_D),
-        CFrame.new(bx, PLAT3_Y + BARRIER_H/2, SPLIT_Z + PATH_D/2),
-        Color3.fromRGB(255, 190, 80))
-end
-
--- ── HÉLICE : bras tournant autour de l'axe Y ────────────
--- Deux bras opposés (pales d'hélicoptère) qui balaient la voie
--- horizontalement. Pivot = axe vertical au centre.
---
--- Vue de dessus (angle = 0, bras face au joueur) :
---
---         ← bras G →  [fenêtre]  ← bras D →
---   ══════════════════╋══════════════════════
---                   pivot (Y)
---
--- Angle=0   → bras perpendiculaires au chemin → bloquant (passe par la fenêtre)
--- Angle=π/2 → bras parallèles au chemin → dégagé (peut courir autour)
-
-local HELI_WIN_W =  6    -- fenêtre centrale (entre les deux bras)
-local HELI_HALF  = (PATH_W - HELI_WIN_W) / 2  -- longueur d'un bras = 9
-local HELI_H     =  6    -- hauteur des bras (bloque le joueur ~5 studs)
-local HELI_T     =  2.5  -- épaisseur (Z) : visible même quand le bras est de côté
-local HELI_CLR_A = Color3.fromRGB(210,  50, 180)   -- magenta
-local HELI_CLR_B = Color3.fromRGB(255,  90,  60)   -- rouge-orange
-
--- relX centres des bras par rapport au pivot
-local HELI_L_RX = -(HELI_WIN_W/2 + HELI_HALF/2)   -- -(3 + 4.5) = -7.5
-local HELI_R_RX =  (HELI_WIN_W/2 + HELI_HALF/2)   -- +7.5
-
-local rWallStations = {
-    { zOff = 20, speed = 1.0, phase = 0          },  -- lent
-    { zOff = 50, speed = 1.5, phase = math.pi/3  },  -- moyen (déphasé)
-    { zOff = 76, speed = 0.8, phase = math.pi    },  -- très lent
-}
-local rWallData = {}
-
-local function makeRWP(name, size, color)
-    local p = Instance.new("Part")
-    p.Name = name; p.Size = size; p.Color = color
-    p.Material = Enum.Material.SmoothPlastic
-    p.Anchored = true; p.CanCollide = true; p.CastShadow = false
-    p.Parent = zoneFolder
-    return p
-end
-
-for pathIdx, cx in ipairs({ PATH_X_L, PATH_X_R }) do
-    for si, def in ipairs(rWallStations) do
-        local wz    = SPLIT_Z + def.zOff
-        local color = (si % 2 == 0) and HELI_CLR_B or HELI_CLR_A
-        local entry = {
-            parts  = {},
-            angle  = def.phase,
-            speed  = def.speed,
-            -- pivot au milieu de la hauteur → bras part du sol jusqu'à HELI_H
-            pivotY = PLAT3_Y + HELI_H / 2,
-            cx     = cx,
-            cz     = wz,
-        }
-
-        -- Deux bras opposés (gauche / droit du pivot)
-        -- relY = 0 → centrés verticalement sur le pivot
-        local left  = makeRWP("HELI_L_"..pathIdx.."_"..si, Vector3.new(HELI_HALF, HELI_H, HELI_T), color)
-        local right = makeRWP("HELI_R_"..pathIdx.."_"..si, Vector3.new(HELI_HALF, HELI_H, HELI_T), color)
-
-        table.insert(entry.parts, { part = left,  relX = HELI_L_RX, relY = 0 })
-        table.insert(entry.parts, { part = right, relX = HELI_R_RX, relY = 0 })
-
-        table.insert(rWallData, entry)
-    end
-end
-
--- Plateforme de réunion après les deux voies
-local MERGE_Z = SPLIT_Z + PATH_D
-local MERGE_D = 40
-mkPart("MergePlatform",
-    Vector3.new(S4_TOTAL_W, WAIT_PLAT_H, MERGE_D),
-    CFrame.new(ZONE_X, PLAT3_Y - WAIT_PLAT_H/2, MERGE_Z + MERGE_D/2),
-    Color3.fromRGB(200, 240, 255))
-
--- ============================================================
--- HEARTBEAT : MURS ROTATIFS (upvalue : rWallData)
--- ============================================================
-RunService.Heartbeat:Connect(function(dt)
-    for _, rw in ipairs(rWallData) do
-        rw.angle += rw.speed * dt
-        local pivotCF = CFrame.new(rw.cx, rw.pivotY, rw.cz) * CFrame.Angles(0, rw.angle, 0)
-        for _, item in ipairs(rw.parts) do
-            item.part.CFrame = pivotCF * CFrame.new(item.relX, item.relY, 0)
-        end
+-- ── Checkpoint (portique jaune sur la plateforme d'attente) ──
+local CP_Z    = SEC_Z0 - 6
+local CP_CF   = CFrame.new(ZONE_X, PLAT3_Y + 4, CP_Z)
+local cpTrigger = Instance.new("Part")
+cpTrigger.Name        = "Checkpoint_2_Trigger"
+cpTrigger.Size        = Vector3.new(S4_TOTAL_W, 6, 4)
+cpTrigger.CFrame      = CFrame.new(ZONE_X, PLAT3_Y + 3, CP_Z)
+cpTrigger.Anchored    = true; cpTrigger.CanCollide = false; cpTrigger.Transparency = 1
+cpTrigger.Parent      = zoneFolder
+local cpDone = {}
+cpTrigger.Touched:Connect(function(hit)
+    local pl = Players:GetPlayerFromCharacter(hit.Parent)
+    if pl and not cpDone[pl.UserId] then
+        cpDone[pl.UserId]      = true
+        checkpointRespawn[pl]  = CP_CF
+        print("[FinishLineTest] ✅ Checkpoint 2 — " .. pl.Name)
     end
 end)
 
--- ============================================================
--- TP (touche Y → murs rotatifs voies) — upvalues : PATH_X_L, PLAT3_Y, SPLIT_Z
--- ============================================================
-local FINISH_SPAWN = CFrame.new(PATH_X_L, PLAT3_Y + 4, SPLIT_Z + 5)
+-- ── Grille tombante ──────────────────────────────────────────
+-- Chaque carré tombe quand un joueur marche dessus, SAUF les
+-- carreaux du chemin secret (même couleur → introuvable à vue).
+-- Chemin : part du centre (cols 7-8) et zigzague jusqu'à l'autre côté.
+local TILE_W  = 7
+local TILE_D  = 7
+local TILE_H  = 1
+local GAP     = 0.3
+local COLS    = 12   -- 84 studs de large
+local ROWS    = 12   -- 84 studs de long
+local GRID_X0 = ZONE_X - (COLS * TILE_W) / 2
+local GRID_Z0 = SEC_Z0
+local GRID_Y  = PLAT3_Y - TILE_H / 2
+
+-- Chemin sûr (0-based row, col) — zigzag centre→gauche→droite
+local safe = {}
+local function sp(r, c) safe[r * 100 + c] = true end
+sp(0,5);  sp(0,6)
+sp(1,4);  sp(1,5);  sp(1,6)
+sp(2,3);  sp(2,4)
+sp(3,2);  sp(3,3)
+sp(4,2);  sp(4,3);  sp(4,4)
+sp(5,4);  sp(5,5)
+sp(6,5);  sp(6,6);  sp(6,7)
+sp(7,7);  sp(7,8)
+sp(8,8);  sp(8,9)
+sp(9,8);  sp(9,9);  sp(9,10)
+sp(10,9); sp(10,10)
+sp(11,9); sp(11,10)
+
+for row = 0, ROWS - 1 do
+    for col = 0, COLS - 1 do
+        local tx  = GRID_X0 + col * TILE_W + TILE_W / 2
+        local tz  = GRID_Z0 + row * TILE_D + TILE_D / 2
+        local p   = Instance.new("Part")
+        p.Name     = "GTile_"..row.."_"..col
+        p.Size     = Vector3.new(TILE_W - GAP, TILE_H, TILE_D - GAP)
+        p.CFrame   = CFrame.new(tx, GRID_Y, tz)
+        p.Color    = Color3.fromRGB(80, 160, 240)
+        p.Material = Enum.Material.SmoothPlastic
+        p.Anchored = true; p.CastShadow = false
+        p.Parent   = zoneFolder
+        if not safe[row * 100 + col] then
+            local fell = false
+            p.Touched:Connect(function(hit)
+                if fell then return end
+                local hum = hit.Parent and hit.Parent:FindFirstChildOfClass("Humanoid")
+                if not hum or hum.Health <= 0 then return end
+                fell = true
+                p.Anchored = false
+                game:GetService("Debris"):AddItem(p, 3)
+            end)
+        end
+    end
+end
+
+-- ── Plateforme de sortie ─────────────────────────────────────
+local MERGE_Z = SEC_Z0 + ROWS * TILE_D   -- juste après la grille
+local MERGE_D = 40
+mkPart("MergePlatform",
+    Vector3.new(S4_TOTAL_W, WAIT_PLAT_H, MERGE_D),
+    CFrame.new(ZONE_X, PLAT3_Y - WAIT_PLAT_H/2, MERGE_Z + MERGE_D / 2),
+    Color3.fromRGB(200, 240, 255))
+
+-- ── TP (touche Y → juste avant la grille) ────────────────────
+local FINISH_SPAWN = CFrame.new(ZONE_X, PLAT3_Y + 4, SEC_Z0 - 3)
 
 local ok, reTeleport = pcall(function()
     return game.ReplicatedStorage:WaitForChild("Events", 10)
                :WaitForChild("TeleportToFinish", 10)
 end)
-
 if not ok or not reTeleport then
     warn("[FinishLineTest] RemoteEvent TeleportToFinish introuvable !")
 else
@@ -912,12 +899,199 @@ else
         local root = char:FindFirstChild("HumanoidRootPart")
         if root then root.CFrame = FINISH_SPAWN end
     end)
-    print("[Manche 1] ✅ Prêt | [Y] = TP murs rotatifs | mort = respawn bas de rampe")
+    print("[Manche 1] ✅ Prêt | [Y] = TP grille tombante")
 end
-end  -- fin bloc do-end DEUX VOIES
+end  -- fin bloc do-end GRILLE TOMBANTE
 
 print(string.format("[Manche 1] ✅ Rampe | %d canons | S3 | S4 | Voies rotatifs — PLAT_Y=%d",
     #LANE_X, PLAT_Y_SURF))
+
+-- ============================================================
+-- SECTION FINALE : rampe inclinée + punching balls + ligne d'arrivée
+-- (hors DEUX VOIES pour ne pas ajouter de registres dans ce bloc)
+-- ============================================================
+
+local fpbFinalCD = {}   -- hors do-end : cooldown PB finaux
+
+do  -- bloc do-end SECTION FINALE
+-- ── Positions de base ─────────────────────────────────────
+local FIN_Z0  = WAIT_Z + WAIT_PLAT_D + 130   -- début section (fin MergePlatform)
+local FIN_W   = S4_TOTAL_W
+local FIN_H   = WAIT_PLAT_H
+local FIN_Y   = PLAT3_Y    -- même hauteur que le reste du parcours
+
+-- Rampe inclinée
+local RAMP_D    = 110
+local RAMP_RISE = 18
+local rampLen   = math.sqrt(RAMP_D^2 + RAMP_RISE^2)
+local rampAngle = math.atan(RAMP_RISE / RAMP_D)
+mkPart("FinalRamp",
+    Vector3.new(FIN_W, FIN_H, rampLen),
+    CFrame.new(ZONE_X, FIN_Y + RAMP_RISE/2 - FIN_H/2, FIN_Z0 + RAMP_D/2)
+        * CFrame.Angles(-rampAngle, 0, 0),
+    Color3.fromRGB(255, 213, 79))   -- jaune identique aux plateformes S4
+
+-- ── Punching Balls — cylindres jaunes ────────────────────
+local PB2_CYL_H    = 10
+local PB2_CYL_D    = 6
+local PB2_X_MIN    = -(FIN_W/2 - 2)
+local PB2_X_MAX    =  (FIN_W/2 - 2)
+local PB2_PUSH     = 45
+local PB2_ROT      = CFrame.Angles(0, 0, math.pi/2)   -- rend le cylindre vertical
+
+-- Y surface de la rampe à une position Z donnée
+local function rampY(z)
+    local t = math.clamp((z - FIN_Z0) / RAMP_D, 0, 1)
+    return FIN_Y + t * RAMP_RISE
+end
+
+local function pushPB2(hit, entry)
+    local char = hit.Parent
+    if not char then return end
+    local hum = char:FindFirstChildOfClass("Humanoid")
+    if not hum or hum.Health <= 0 then return end
+    local hrp = char:FindFirstChild("HumanoidRootPart")
+    if not hrp then return end
+    local player = Players:GetPlayerFromCharacter(char)
+    if not player then return end
+    local now = tick()
+    if fpbFinalCD[player.UserId] and now - fpbFinalCD[player.UserId] < 0.3 then return end
+    fpbFinalCD[player.UserId] = now
+    local ballPos = Vector3.new(entry.x, hrp.Position.Y, entry.cz)
+    local dir = (hrp.Position - ballPos)
+    if dir.Magnitude < 0.1 then dir = Vector3.new(1, 0, 0) end
+    dir = dir.Unit
+    local bv = Instance.new("BodyVelocity")
+    bv.Velocity = Vector3.new(dir.X * PB2_PUSH, 22, dir.Z * PB2_PUSH)
+    bv.MaxForce = Vector3.new(1e5, 1e5, 1e5)
+    bv.P        = 1e4
+    bv.Parent   = hrp
+    game:GetService("Debris"):AddItem(bv, 0.2)
+end
+
+local pb2Data = {}
+for i, def in ipairs({
+    { z = FIN_Z0 +  8,  dir =  1, speed = 28, startX = PB2_X_MIN },
+    { z = FIN_Z0 + 20,  dir = -1, speed = 33, startX = PB2_X_MAX },
+    { z = FIN_Z0 + 32,  dir =  1, speed = 30, startX = PB2_X_MIN },
+    { z = FIN_Z0 + 44,  dir = -1, speed = 36, startX = PB2_X_MAX },
+    { z = FIN_Z0 + 56,  dir =  1, speed = 31, startX = PB2_X_MIN },
+    { z = FIN_Z0 + 68,  dir = -1, speed = 38, startX = PB2_X_MAX },
+    { z = FIN_Z0 + 80,  dir =  1, speed = 34, startX = PB2_X_MIN },
+    { z = FIN_Z0 + 92,  dir = -1, speed = 40, startX = PB2_X_MAX },
+    { z = FIN_Z0 + 102, dir =  1, speed = 35, startX = PB2_X_MIN },
+}) do
+    local sy    = rampY(def.z)
+    local cy    = sy + PB2_CYL_H/2
+    local entry = { part = nil, x = def.startX, dir = def.dir, speed = def.speed, cz = def.z, y = cy }
+
+    local cyl = Instance.new("Part")
+    cyl.Name     = "PB2_Cyl_"..i
+    cyl.Shape    = Enum.PartType.Cylinder
+    cyl.Size     = Vector3.new(PB2_CYL_H, PB2_CYL_D, PB2_CYL_D)
+    cyl.Color    = Color3.fromRGB(255, 220, 0)
+    cyl.Material = Enum.Material.SmoothPlastic
+    cyl.Anchored = true; cyl.CanCollide = true; cyl.CastShadow = false
+    cyl.CFrame   = CFrame.new(def.startX, cy, def.z) * PB2_ROT
+    cyl.Parent   = zoneFolder
+    cyl.Touched:Connect(function(hit) pushPB2(hit, entry) end)
+    entry.part = cyl
+    table.insert(pb2Data, entry)
+end
+
+RunService.Heartbeat:Connect(function(dt)
+    for _, pb in ipairs(pb2Data) do
+        pb.x += pb.dir * pb.speed * dt
+        if pb.x >= PB2_X_MAX then pb.x = PB2_X_MAX; pb.dir = -1
+        elseif pb.x <= PB2_X_MIN then pb.x = PB2_X_MIN; pb.dir = 1 end
+        pb.part.CFrame = CFrame.new(pb.x, pb.y, pb.cz) * PB2_ROT
+    end
+end)
+
+-- ── Ligne d'arrivée ───────────────────────────────────────
+local FINISH_Z  = FIN_Z0 + RAMP_D
+local FINISH_Y  = FIN_Y + RAMP_RISE
+
+-- Damier noir & blanc — 8 rangées
+local TILE_W    = 6
+local TILE_D    = 6
+local TILE_H    = 1
+local TILE_COLS = math.floor(FIN_W / TILE_W)
+local TILE_ROWS = 8
+local CLR_BLACK = Color3.fromRGB(15,  15,  15)
+local CLR_WHITE = Color3.fromRGB(250, 250, 250)
+
+for row = 0, TILE_ROWS - 1 do
+    for col = 0, TILE_COLS - 1 do
+        local tx = ZONE_X - FIN_W/2 + TILE_W/2 + col * TILE_W
+        local tz = FINISH_Z + TILE_D/2 + row * TILE_D
+        mkPart("Tile_"..row.."_"..col,
+            Vector3.new(TILE_W, TILE_H, TILE_D),
+            CFrame.new(tx, FINISH_Y - TILE_H/2, tz),
+            (row + col) % 2 == 0 and CLR_BLACK or CLR_WHITE)
+    end
+end
+
+-- Portique d'arrivée
+local GATE_H     = 22    -- hauteur des piliers
+local GATE_W     = 4     -- largeur des piliers
+local BEAM_H     = 4     -- épaisseur de la poutre
+local BANNER_H   = 6     -- hauteur de la bannière jaune
+local GATE_Z     = FINISH_Z + 2
+local GATE_Y_BOT = FINISH_Y
+
+-- Piliers gauche & droite (rouge néon)
+mkPart("FinishPillar_L",
+    Vector3.new(GATE_W, GATE_H, GATE_W),
+    CFrame.new(ZONE_X - FIN_W/2 - GATE_W/2, GATE_Y_BOT + GATE_H/2, GATE_Z),
+    Color3.fromRGB(255, 30, 30), Enum.Material.Neon)
+mkPart("FinishPillar_R",
+    Vector3.new(GATE_W, GATE_H, GATE_W),
+    CFrame.new(ZONE_X + FIN_W/2 + GATE_W/2, GATE_Y_BOT + GATE_H/2, GATE_Z),
+    Color3.fromRGB(255, 30, 30), Enum.Material.Neon)
+
+-- Poutre du haut (rouge néon)
+mkPart("FinishBeam",
+    Vector3.new(FIN_W + GATE_W * 2, BEAM_H, GATE_W),
+    CFrame.new(ZONE_X, GATE_Y_BOT + GATE_H - BEAM_H/2, GATE_Z),
+    Color3.fromRGB(255, 30, 30), Enum.Material.Neon)
+
+-- Bannière jaune/or sous la poutre
+mkPart("FinishBanner",
+    Vector3.new(FIN_W - 4, BANNER_H, 1),
+    CFrame.new(ZONE_X, GATE_Y_BOT + GATE_H - BEAM_H - BANNER_H/2, GATE_Z),
+    Color3.fromRGB(255, 200, 0), Enum.Material.Neon)
+
+-- Liseré néon au sol (ligne blanche lumineuse juste avant le damier)
+mkPart("FinishGlow",
+    Vector3.new(FIN_W, 0.4, 1.5),
+    CFrame.new(ZONE_X, FINISH_Y + 0.2, FINISH_Z - 1),
+    Color3.fromRGB(255, 255, 100), Enum.Material.Neon)
+
+-- Capteur invisible (détection franchissement)
+local flPart = Instance.new("Part")
+flPart.Name = "FinishLine"; flPart.Size = Vector3.new(FIN_W, GATE_H, 2)
+flPart.CFrame = CFrame.new(ZONE_X, GATE_Y_BOT + GATE_H/2, GATE_Z)
+flPart.Anchored = true; flPart.CanCollide = false; flPart.Transparency = 1
+flPart:SetAttribute("CourseId", 1)
+CollectionService:AddTag(flPart, "ArrivalZone")
+flPart.Parent = zoneFolder
+
+local finishReached = {}
+flPart.Touched:Connect(function(hit)
+    local char   = hit.Parent
+    local player = Players:GetPlayerFromCharacter(char)
+    if player and not finishReached[player] then
+        finishReached[player] = true
+        print("[FinishLineTest] 🏁 " .. player.Name .. " a franchi la ligne d'arrivée !")
+    end
+end)
+
+end  -- fin bloc do-end SECTION FINALE
+
+Players.PlayerRemoving:Connect(function(player)
+    fpbFinalCD[player.UserId] = nil
+end)
 
 -- ============================================================
 -- CHECKPOINT (plateforme haute)
